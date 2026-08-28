@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111318">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>写り込み消し</title>
+<style>
+  :root { --bg:#111318; --card:#1c1f27; --line:#2c313d; --text:#e8eaf0; --sub:#9aa1b0; --accent:#4f8cff; --accent2:#ff5f7a; }
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,"Hiragino Sans",sans-serif;
+         padding:16px 16px calc(24px + env(safe-area-inset-bottom)); max-width:640px; margin:0 auto; }
+  h1 { font-size:20px; padding:8px 0 2px; }
+  .sub { color:var(--sub); font-size:12.5px; line-height:1.6; margin-bottom:14px; }
+  .modes { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:10px; }
+  .mode { border:1.5px solid var(--line); background:var(--card); color:var(--text); border-radius:12px;
+          padding:10px 0 8px; font-size:15px; font-weight:600; text-align:center; }
+  .mode small { display:block; font-weight:400; font-size:10px; color:var(--sub); margin-top:2px; }
+  .mode.on { border-color:var(--accent); background:#1a2740; }
+  .mode.on.rev { border-color:var(--accent2); background:#3a1c26; }
+  .modehint { color:var(--sub); font-size:12px; line-height:1.6; margin-bottom:14px; min-height:2.6em; }
+  .pick { display:block; width:100%; background:var(--accent); color:#fff; border:none; border-radius:14px;
+          padding:16px; font-size:17px; font-weight:700; text-align:center; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; margin-top:16px; }
+  .card img { width:100%; border-radius:10px; display:block; }
+  .name { font-size:12px; color:var(--sub); margin-bottom:8px; word-break:break-all; }
+  .row { display:flex; gap:8px; margin-top:10px; }
+  .btn { flex:1; border:1.5px solid var(--line); background:none; color:var(--text); border-radius:11px;
+         padding:11px 0; font-size:14px; font-weight:600; }
+  .btn.main { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .hint { font-size:11.5px; color:var(--sub); margin-top:8px; line-height:1.5; }
+  .busy { text-align:center; color:var(--sub); padding:10px 0; font-size:13px; }
+  footer { color:var(--sub); font-size:11px; text-align:center; margin-top:26px; line-height:1.7; }
+</style>
+</head>
+<body>
+<h1>📷 写り込み消し</h1>
+<p class="sub">筐体ガラスに写り込んだ顔・スマホ・後ろの台を沈めて、SNSに上げやすくするツール。写真はこの端末の中だけで処理されて、どこにも送信されないよ。</p>
+
+<div class="modes" id="modes">
+  <button class="mode" data-m="弱">弱</button>
+  <button class="mode on" data-m="中">中</button>
+  <button class="mode" data-m="強">強</button>
+  <button class="mode rev" data-m="逆">逆<small>明るい写り込み</small></button>
+</div>
+<p class="modehint" id="modehint"></p>
+
+<label class="pick" for="file">写真を選ぶ（複数OK）</label>
+<input type="file" id="file" accept="image/*" multiple style="display:none">
+<div id="list"></div>
+
+<footer>元の写真は変更されない。保存を押した分だけ写真アプリに増える。<br>暗い画面の写り込み（顔・スマホ）＝弱/中/強 ／ 暗転演出に写った明るい台・カウンター＝逆</footer>
+
+<script>
+"use strict";
+const HINTS = {
+  "弱": "暗いところを少しだけ黒に落とす。中で画面まで暗くなりすぎたときに。",
+  "中": "おすすめ。暗い画面に写り込んだ顔・スマホを黒に落とす。",
+  "強": "中で消え残ったときに。画面の暗い演出も潰れやすいので注意。",
+  "逆": "暗転演出のとき明るく写り込んだ後ろの台・データカウンター用。赤い演出は守る。"
+};
+let mode = "中";
+try { const m = localStorage.getItem("utsurikomi-mode"); if (HINTS[m]) mode = m; } catch (e) {}
+
+const modesEl = document.getElementById("modes");
+const hintEl = document.getElementById("modehint");
+const listEl = document.getElementById("list");
+const items = [];   // {file, img, resultEl, nameEl, cardEl, dataURL}
+
+function drawModes() {
+  for (const b of modesEl.children) {
+    b.classList.toggle("on", b.dataset.m === mode);
+  }
+  hintEl.textContent = HINTS[mode];
+}
+drawModes();
+
+modesEl.addEventListener("click", async (ev) => {
+  const b = ev.target.closest(".mode");
+  if (!b || b.dataset.m === mode) return;
+  mode = b.dataset.m;
+  try { localStorage.setItem("utsurikomi-mode", mode); } catch (e) {}
+  drawModes();
+  for (const it of items) await processItem(it);   // モード変更で全部やり直し
+});
+
+// ---- 処理本体（Mac版 処理.py と同じ計算） ----
+const PRESET = { "弱": [0.14, 0.26], "中": [0.20, 0.32], "強": [0.26, 0.38] };
+function processPixels(d, m) {
+  const n = d.length;
+  if (m === "逆") {
+    for (let i = 0; i < n; i += 4) {
+      const R = d[i] / 255, G = d[i+1] / 255, B = d[i+2] / 255;
+      const lum = R * 0.2126 + G * 0.7152 + B * 0.0722;
+      let t = Math.min(1, Math.max(0, (lum - 0.30) / 0.25));
+      t = t * t * (3 - 2 * t);
+      const red = Math.min(1, Math.max(0, (R - Math.max(G, B)) / 0.12));
+      t *= (1 - red);                                   // 赤い演出は守る
+      const green = Math.min(1, Math.max(0, (G - Math.max(R, B)) / 0.10));
+      const f = (1 - t * 0.75) * (1 - green * 0.85);    // 黄緑=カウンター類を狙い撃ち
+      d[i] *= f; d[i+1] *= f; d[i+2] *= f;
+    }
+  } else {
+    const lo = PRESET[m][0], hi = PRESET[m][1];
+    for (let i = 0; i < n; i += 4) {
+      const lum = (d[i] * 0.2126 + d[i+1] * 0.7152 + d[i+2] * 0.0722) / 255;
+      let t = Math.min(1, Math.max(0, (lum - lo) / (hi - lo)));
+      t = t * t * (3 - 2 * t);                          // smoothstep
+      d[i] *= t; d[i+1] *= t; d[i+2] *= t;
+    }
+  }
+}
+window.__processPixels = processPixels;   // テスト用に公開
+
+const MAXPX = 16000000;   // iPhoneのcanvas上限対策(超えたら縮小)
+function processImage(img, m) {
+  let w = img.naturalWidth, h = img.naturalHeight;
+  if (w * h > MAXPX) { const s = Math.sqrt(MAXPX / (w * h)); w = Math.round(w * s); h = Math.round(h * s); }
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0, w, h);
+  const id = ctx.getImageData(0, 0, w, h);
+  processPixels(id.data, m);
+  ctx.putImageData(id, 0, 0);
+  return c.toDataURL("image/jpeg", 0.92);
+}
+window.__processImage = processImage;     // テスト用に公開
+
+async function processItem(it) {
+  it.nameEl.textContent = it.file.name + "（処理中…）";
+  await new Promise(r => setTimeout(r, 30));            // 表示を反映させてから重い処理へ
+  it.dataURL = processImage(it.img, mode);
+  it.resultEl.src = it.dataURL;
+  it.nameEl.textContent = it.file.name + "（" + mode + "で処理済み）";
+}
+
+document.getElementById("file").addEventListener("change", async (ev) => {
+  for (const file of ev.target.files) {
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    try { await img.decode(); } catch (e) { alert(file.name + " を読み込めなかったよ"); continue; }
+
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = '<p class="name"></p><img alt="処理結果">' +
+      '<div class="row"><button class="btn main">保存 / 共有</button>' +
+      '<button class="btn">押してる間 元を表示</button></div>' +
+      '<p class="hint">画像を長押し→「"写真"に保存」でもOK。保存した分だけ写真アプリに増えるよ。</p>';
+    listEl.prepend(card);
+
+    const it = { file, img, dataURL: "",
+                 cardEl: card, nameEl: card.querySelector(".name"), resultEl: card.querySelector("img") };
+    items.push(it);
+    await processItem(it);
+
+    // 保存/共有(共有シートから「画像を保存」できる)
+    card.querySelector(".btn.main").addEventListener("click", async () => {
+      const stem = it.file.name.replace(/\.[^.]+$/, "");
+      const blob = await (await fetch(it.dataURL)).blob();
+      const f = new File([blob], stem + "_消し済み.jpg", { type: "image/jpeg" });
+      if (navigator.canShare && navigator.canShare({ files: [f] })) {
+        try { await navigator.share({ files: [f] }); } catch (e) {}   // キャンセルは無視
+      } else {
+        const a = document.createElement("a");
+        a.href = it.dataURL; a.download = f.name; a.click();
+      }
+    });
+    // 押してる間だけ元画像を表示(見比べ用)
+    const cmp = card.querySelectorAll(".btn")[1];
+    const showOrig = () => { it.resultEl.src = it.img.src; };
+    const showDone = () => { it.resultEl.src = it.dataURL; };
+    cmp.addEventListener("touchstart", showOrig); cmp.addEventListener("touchend", showDone);
+    cmp.addEventListener("touchcancel", showDone);
+    cmp.addEventListener("mousedown", showOrig); cmp.addEventListener("mouseup", showDone);
+    cmp.addEventListener("mouseleave", showDone);
+  }
+  ev.target.value = "";
+});
+</script>
+</body>
+</html>
