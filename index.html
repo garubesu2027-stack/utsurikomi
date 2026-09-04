@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>写り込み消し</title>
 <style>
-  :root { --bg:#111318; --card:#1c1f27; --line:#2c313d; --text:#e8eaf0; --sub:#9aa1b0; --accent:#4f8cff; --accent2:#ff5f7a; }
+  :root { --bg:#111318; --card:#1c1f27; --line:#2c313d; --text:#e8eaf0; --sub:#9aa1b0; --accent:#4f8cff; --accent2:#ff5f7a; --mosaic:#38c793; }
   * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
   body { background:var(--bg); color:var(--text); font-family:-apple-system,"Hiragino Sans",sans-serif;
          padding:16px 16px calc(24px + env(safe-area-inset-bottom)); max-width:640px; margin:0 auto; }
@@ -30,9 +30,21 @@
   .btn { flex:1; border:1.5px solid var(--line); background:none; color:var(--text); border-radius:11px;
          padding:11px 0; font-size:14px; font-weight:600; }
   .btn.main { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.mosaic { border-color:var(--mosaic); color:var(--mosaic); }
   .hint { font-size:11.5px; color:var(--sub); margin-top:8px; line-height:1.5; }
-  .busy { text-align:center; color:var(--sub); padding:10px 0; font-size:13px; }
   footer { color:var(--sub); font-size:11px; text-align:center; margin-top:26px; line-height:1.7; }
+  /* モザイク編集画面 */
+  #editor { position:fixed; inset:0; background:#0b0d12; z-index:10; display:none; flex-direction:column;
+            padding:calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)); }
+  #editor.open { display:flex; }
+  #edtitle { color:var(--sub); font-size:12px; text-align:center; padding-bottom:8px; }
+  #edwrap { flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; min-height:0; }
+  #edcanvas { max-width:100%; max-height:100%; touch-action:none; border-radius:8px; }
+  .edrow { display:flex; gap:8px; margin-top:10px; }
+  .edbtn { flex:1; border:1.5px solid var(--line); background:var(--card); color:var(--text); border-radius:11px;
+           padding:12px 0; font-size:14px; font-weight:600; text-align:center; }
+  .edbtn.on { border-color:var(--mosaic); color:var(--mosaic); background:#14261f; }
+  .edbtn.done { background:var(--mosaic); border-color:var(--mosaic); color:#082018; }
 </style>
 </head>
 <body>
@@ -51,7 +63,27 @@
 <input type="file" id="file" accept="image/*" multiple style="display:none">
 <div id="list"></div>
 
-<footer>元の写真は変更されない。保存を押した分だけ写真アプリに増える。<br>暗い画面の写り込み（顔・スマホ）＝弱/中/強 ／ 暗転演出に写った明るい台・カウンター＝逆</footer>
+<footer>元の写真は変更されない。保存を押した分だけ写真アプリに増える。<br>
+暗い画面の写り込み（顔・スマホ）＝弱/中/強 ／ 暗転演出に写った明るい台・カウンター＝逆<br>
+消え残った明るい写り込みは「モザイク仕上げ」で指でこすって消す。 v1.2</footer>
+
+<div id="editor">
+  <p id="edtitle">指でなぞった場所にモザイクがかかるよ</p>
+  <div id="edwrap"><canvas id="edcanvas"></canvas></div>
+  <div class="edrow">
+    <button class="edbtn" id="edall">全体にかける</button>
+    <button class="edbtn" id="edundo">1歩戻る</button>
+  </div>
+  <div class="edrow" id="edbrushes">
+    <button class="edbtn" data-b="0">ブラシ細</button>
+    <button class="edbtn on" data-b="1">ブラシ中</button>
+    <button class="edbtn" data-b="2">ブラシ太</button>
+  </div>
+  <div class="edrow">
+    <button class="edbtn" id="edcancel">キャンセル</button>
+    <button class="edbtn done" id="eddone">完了</button>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -67,12 +99,10 @@ try { const m = localStorage.getItem("utsurikomi-mode"); if (HINTS[m]) mode = m;
 const modesEl = document.getElementById("modes");
 const hintEl = document.getElementById("modehint");
 const listEl = document.getElementById("list");
-const items = [];   // {file, img, resultEl, nameEl, cardEl, dataURL}
+const items = [];
 
 function drawModes() {
-  for (const b of modesEl.children) {
-    b.classList.toggle("on", b.dataset.m === mode);
-  }
+  for (const b of modesEl.children) b.classList.toggle("on", b.dataset.m === mode);
   hintEl.textContent = HINTS[mode];
 }
 drawModes();
@@ -83,10 +113,10 @@ modesEl.addEventListener("click", async (ev) => {
   mode = b.dataset.m;
   try { localStorage.setItem("utsurikomi-mode", mode); } catch (e) {}
   drawModes();
-  for (const it of items) await processItem(it);   // モード変更で全部やり直し
+  for (const it of items) await processItem(it);   // モード変更で全部やり直し(モザイク仕上げも消える)
 });
 
-// ---- 処理本体（Mac版 処理.py と同じ計算） ----
+// ---- 黒潰し処理（Mac版 処理.py と同じ計算） ----
 const PRESET = { "弱": [0.14, 0.26], "中": [0.20, 0.32], "強": [0.26, 0.38] };
 function processPixels(d, m) {
   const n = d.length;
@@ -97,9 +127,9 @@ function processPixels(d, m) {
       let t = Math.min(1, Math.max(0, (lum - 0.30) / 0.25));
       t = t * t * (3 - 2 * t);
       const red = Math.min(1, Math.max(0, (R - Math.max(G, B)) / 0.12));
-      t *= (1 - red);                                   // 赤い演出は守る
+      t *= (1 - red);
       const green = Math.min(1, Math.max(0, (G - Math.max(R, B)) / 0.10));
-      const f = (1 - t * 0.75) * (1 - green * 0.85);    // 黄緑=カウンター類を狙い撃ち
+      const f = (1 - t * 0.75) * (1 - green * 0.85);
       d[i] *= f; d[i+1] *= f; d[i+2] *= f;
     }
   } else {
@@ -107,14 +137,14 @@ function processPixels(d, m) {
     for (let i = 0; i < n; i += 4) {
       const lum = (d[i] * 0.2126 + d[i+1] * 0.7152 + d[i+2] * 0.0722) / 255;
       let t = Math.min(1, Math.max(0, (lum - lo) / (hi - lo)));
-      t = t * t * (3 - 2 * t);                          // smoothstep
+      t = t * t * (3 - 2 * t);
       d[i] *= t; d[i+1] *= t; d[i+2] *= t;
     }
   }
 }
-window.__processPixels = processPixels;   // テスト用に公開
+window.__processPixels = processPixels;
 
-const MAXPX = 16000000;   // iPhoneのcanvas上限対策(超えたら縮小)
+const MAXPX = 16000000;
 function processImage(img, m) {
   let w = img.naturalWidth, h = img.naturalHeight;
   if (w * h > MAXPX) { const s = Math.sqrt(MAXPX / (w * h)); w = Math.round(w * s); h = Math.round(h * s); }
@@ -127,11 +157,143 @@ function processImage(img, m) {
   ctx.putImageData(id, 0, 0);
   return c.toDataURL("image/jpeg", 0.92);
 }
-window.__processImage = processImage;     // テスト用に公開
+window.__processImage = processImage;
+
+// ---- モザイク ----
+function mosaicSource(srcCanvas) {
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const cell = Math.max(12, Math.round(Math.min(w, h) / 40));   // 粗め固定(細かいモザイクは復元リスクがある)
+  const small = document.createElement("canvas");
+  small.width = Math.max(1, Math.round(w / cell));
+  small.height = Math.max(1, Math.round(h / cell));
+  small.getContext("2d").drawImage(srcCanvas, 0, 0, small.width, small.height);
+  const big = document.createElement("canvas");
+  big.width = w; big.height = h;
+  const bctx = big.getContext("2d");
+  bctx.imageSmoothingEnabled = false;
+  bctx.drawImage(small, 0, 0, w, h);
+  return big;
+}
+window.__mosaicSource = mosaicSource;
+
+const BRUSH = [1/30, 1/16, 1/8];   // 半径 = 短辺×これ
+let ed = null;                     // {it, base, mosaic, view, ctx, strokes, brush, drawing}
+
+function paintDot(ctx, mosaic, x, y, r) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, 6.2832);
+  ctx.clip();
+  const bx = Math.max(0, x - r), by = Math.max(0, y - r), bw = r * 2, bh = r * 2;
+  ctx.drawImage(mosaic, bx, by, bw, bh, bx, by, bw, bh);
+  ctx.restore();
+}
+function renderEditor() {
+  const ctx = ed.ctx;
+  ctx.drawImage(ed.base, 0, 0);
+  for (const s of ed.strokes) {
+    if (s.all) { ctx.drawImage(ed.mosaic, 0, 0); continue; }
+    for (const p of s.pts) paintDot(ctx, ed.mosaic, p[0], p[1], s.r);
+  }
+}
+window.__renderEditorForTest = (base, strokes) => {   // テスト用
+  ed = { base, mosaic: mosaicSource(base), view: null, ctx: null, strokes, brush: 1 };
+  const v = document.createElement("canvas"); v.width = base.width; v.height = base.height;
+  ed.ctx = v.getContext("2d");
+  renderEditor();
+  const r = v; ed = null; return r;
+};
+
+const editorEl = document.getElementById("editor");
+const edCanvas = document.getElementById("edcanvas");
+
+async function openEditor(it) {
+  const img = new Image();
+  img.src = it.dataURL;
+  await img.decode();
+  const base = document.createElement("canvas");
+  base.width = img.naturalWidth; base.height = img.naturalHeight;
+  base.getContext("2d").drawImage(img, 0, 0);
+  edCanvas.width = base.width; edCanvas.height = base.height;
+  ed = { it, base, mosaic: mosaicSource(base), view: edCanvas,
+         ctx: edCanvas.getContext("2d"), strokes: [], brush: 1, drawing: false };
+  renderEditor();
+  editorEl.classList.add("open");
+  document.body.style.overflow = "hidden";
+}
+function closeEditor() {
+  editorEl.classList.remove("open");
+  document.body.style.overflow = "";
+  ed = null;
+}
+
+function canvasPos(ev) {
+  const rect = edCanvas.getBoundingClientRect();
+  const t = ev.touches ? ev.touches[0] : ev;
+  return [ (t.clientX - rect.left) * edCanvas.width / rect.width,
+           (t.clientY - rect.top) * edCanvas.height / rect.height ];
+}
+function strokeStart(ev) {
+  if (!ed) return;
+  ev.preventDefault();
+  const r = Math.round(Math.min(edCanvas.width, edCanvas.height) * BRUSH[ed.brush]);
+  const p = canvasPos(ev);
+  ed.strokes.push({ r, pts: [p] });
+  ed.drawing = true;
+  paintDot(ed.ctx, ed.mosaic, p[0], p[1], r);
+}
+function strokeMove(ev) {
+  if (!ed || !ed.drawing) return;
+  ev.preventDefault();
+  const s = ed.strokes[ed.strokes.length - 1];
+  const p = canvasPos(ev);
+  const q = s.pts[s.pts.length - 1];
+  const dist = Math.hypot(p[0] - q[0], p[1] - q[1]);
+  const step = Math.max(1, s.r / 2);
+  for (let d = step; d <= dist; d += step) {
+    const m = [ q[0] + (p[0] - q[0]) * d / dist, q[1] + (p[1] - q[1]) * d / dist ];
+    s.pts.push(m);
+    paintDot(ed.ctx, ed.mosaic, m[0], m[1], s.r);
+  }
+}
+function strokeEnd() { if (ed) ed.drawing = false; }
+edCanvas.addEventListener("touchstart", strokeStart, { passive: false });
+edCanvas.addEventListener("touchmove", strokeMove, { passive: false });
+edCanvas.addEventListener("touchend", strokeEnd);
+edCanvas.addEventListener("mousedown", strokeStart);
+edCanvas.addEventListener("mousemove", strokeMove);
+edCanvas.addEventListener("mouseup", strokeEnd);
+edCanvas.addEventListener("mouseleave", strokeEnd);
+
+document.getElementById("edall").addEventListener("click", () => {
+  if (!ed) return;
+  ed.strokes.push({ all: true });
+  renderEditor();
+});
+document.getElementById("edundo").addEventListener("click", () => {
+  if (!ed || !ed.strokes.length) return;
+  ed.strokes.pop();
+  renderEditor();
+});
+document.getElementById("edbrushes").addEventListener("click", (ev) => {
+  const b = ev.target.closest(".edbtn");
+  if (!b || !ed) return;
+  ed.brush = Number(b.dataset.b);
+  for (const x of document.getElementById("edbrushes").children) x.classList.toggle("on", x === b);
+});
+document.getElementById("edcancel").addEventListener("click", closeEditor);
+document.getElementById("eddone").addEventListener("click", () => {
+  if (!ed) return;
+  const it = ed.it;
+  it.dataURL = edCanvas.toDataURL("image/jpeg", 0.92);
+  it.resultEl.src = it.dataURL;
+  it.nameEl.textContent = it.file.name + "（" + mode + "＋モザイク仕上げ）";
+  closeEditor();
+});
 
 async function processItem(it) {
   it.nameEl.textContent = it.file.name + "（処理中…）";
-  await new Promise(r => setTimeout(r, 30));            // 表示を反映させてから重い処理へ
+  await new Promise(r => setTimeout(r, 30));
   it.dataURL = processImage(it.img, mode);
   it.resultEl.src = it.dataURL;
   it.nameEl.textContent = it.file.name + "（" + mode + "で処理済み）";
@@ -148,7 +310,8 @@ document.getElementById("file").addEventListener("change", async (ev) => {
     card.innerHTML = '<p class="name"></p><img alt="処理結果">' +
       '<div class="row"><button class="btn main">保存 / 共有</button>' +
       '<button class="btn">押してる間 元を表示</button></div>' +
-      '<p class="hint">画像を長押し→「"写真"に保存」でもOK。保存した分だけ写真アプリに増えるよ。</p>';
+      '<div class="row"><button class="btn mosaic">🟩 モザイク仕上げ（指でこする）</button></div>' +
+      '<p class="hint">画像を長押し→「"写真"に保存」でもOK。上のモード切替をするとモザイク仕上げはやり直しになるよ。</p>';
     listEl.prepend(card);
 
     const it = { file, img, dataURL: "",
@@ -156,19 +319,17 @@ document.getElementById("file").addEventListener("change", async (ev) => {
     items.push(it);
     await processItem(it);
 
-    // 保存/共有(共有シートから「画像を保存」できる)
     card.querySelector(".btn.main").addEventListener("click", async () => {
       const stem = it.file.name.replace(/\.[^.]+$/, "");
       const blob = await (await fetch(it.dataURL)).blob();
       const f = new File([blob], stem + "_消し済み.jpg", { type: "image/jpeg" });
       if (navigator.canShare && navigator.canShare({ files: [f] })) {
-        try { await navigator.share({ files: [f] }); } catch (e) {}   // キャンセルは無視
+        try { await navigator.share({ files: [f] }); } catch (e) {}
       } else {
         const a = document.createElement("a");
         a.href = it.dataURL; a.download = f.name; a.click();
       }
     });
-    // 押してる間だけ元画像を表示(見比べ用)
     const cmp = card.querySelectorAll(".btn")[1];
     const showOrig = () => { it.resultEl.src = it.img.src; };
     const showDone = () => { it.resultEl.src = it.dataURL; };
@@ -176,6 +337,7 @@ document.getElementById("file").addEventListener("change", async (ev) => {
     cmp.addEventListener("touchcancel", showDone);
     cmp.addEventListener("mousedown", showOrig); cmp.addEventListener("mouseup", showDone);
     cmp.addEventListener("mouseleave", showDone);
+    card.querySelector(".btn.mosaic").addEventListener("click", () => openEditor(it));
   }
   ev.target.value = "";
 });
