@@ -15,7 +15,7 @@
     -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; touch-action:manipulation;
   }
   body { background:var(--bg); color:var(--text); font-family:-apple-system,"Hiragino Sans",sans-serif;
-         padding:16px 16px calc(24px + env(safe-area-inset-bottom)); max-width:640px; margin:0 auto; }
+         padding:calc(16px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); max-width:640px; margin:0 auto; }
   h1 { font-size:20px; padding:8px 0 2px; }
   .sub { color:var(--sub); font-size:12.5px; line-height:1.6; margin-bottom:14px; }
   .modes { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-bottom:10px; }
@@ -65,7 +65,7 @@
   <button class="mode on" data-m="中">中</button>
   <button class="mode" data-m="強">強</button>
   <button class="mode rev" data-m="逆">逆<small>明るい写り込み</small></button>
-  <button class="mode raw" data-m="そのまま">その<br>まま<small>黒潰しなし</small></button>
+  <button class="mode raw" data-m="モザイクのみ">モザイク<br>のみ<small>黒潰しなし</small></button>
 </div>
 <p class="modehint" id="modehint"></p>
 
@@ -75,7 +75,7 @@
 
 <footer>元の写真は変更されない。保存を押した分だけ写真アプリに増える。<br>
 暗い画面の写り込み（顔・スマホ）＝弱/中/強 ／ 暗転演出に写った明るい台・カウンター＝逆<br>
-消え残った明るい写り込みは「モザイク仕上げ」で指でこすって消す。 v1.3</footer>
+消え残った明るい写り込みは「モザイク仕上げ」で指でこすって消す。 v1.4</footer>
 
 <div id="editor">
   <p id="edtitle">指でなぞった場所にモザイクがかかるよ</p>
@@ -102,10 +102,14 @@ const HINTS = {
   "中": "おすすめ。暗い画面に写り込んだ顔・スマホを黒に落とす。",
   "強": "中で消え残ったときに。画面の暗い演出も潰れやすいので注意。",
   "逆": "暗転演出のとき明るく写り込んだ後ろの台・データカウンター用。赤い演出は守る。",
-  "そのまま": "黒潰しをかけない。写真そのままにモザイクだけかけたいとき用。"
+  "モザイクのみ": "黒潰しをかけない。写真そのままにモザイクだけかけたいとき用。書類の住所隠しにも。"
 };
 let mode = "中";
-try { const m = localStorage.getItem("utsurikomi-mode"); if (HINTS[m]) mode = m; } catch (e) {}
+try {
+  let m = localStorage.getItem("utsurikomi-mode");
+  if (m === "そのまま") m = "モザイクのみ";   // v1.3の保存値を引き継ぐ
+  if (HINTS[m]) mode = m;
+} catch (e) {}
 
 const modesEl = document.getElementById("modes");
 const hintEl = document.getElementById("modehint");
@@ -163,7 +167,7 @@ function processImage(img, m) {
   c.width = w; c.height = h;
   const ctx = c.getContext("2d");
   ctx.drawImage(img, 0, 0, w, h);
-  if (m !== "そのまま") {
+  if (m !== "モザイクのみ") {
     const id = ctx.getImageData(0, 0, w, h);
     processPixels(id.data, m);
     ctx.putImageData(id, 0, 0);
@@ -300,7 +304,7 @@ document.getElementById("eddone").addEventListener("click", () => {
   const it = ed.it;
   it.dataURL = edCanvas.toDataURL("image/jpeg", 0.92);
   it.resultEl.src = it.dataURL;
-  it.nameEl.textContent = it.file.name + "（" + mode + "＋モザイク仕上げ）";
+  it.nameEl.textContent = it.file.name + "（" + (mode === "モザイクのみ" ? "モザイク仕上げ" : mode + "＋モザイク仕上げ") + "）";
   closeEditor();
 });
 
@@ -309,7 +313,7 @@ async function processItem(it) {
   await new Promise(r => setTimeout(r, 30));
   it.dataURL = processImage(it.img, mode);
   it.resultEl.src = it.dataURL;
-  it.nameEl.textContent = it.file.name + "（" + (mode === "そのまま" ? "加工なし" : mode + "で処理済み") + "）";
+  it.nameEl.textContent = it.file.name + "（" + (mode === "モザイクのみ" ? "加工なし・モザイクどうぞ" : mode + "で処理済み") + "）";
 }
 
 document.getElementById("file").addEventListener("change", async (ev) => {
