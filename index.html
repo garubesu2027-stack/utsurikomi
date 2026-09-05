@@ -10,16 +10,21 @@
 <style>
   :root { --bg:#111318; --card:#1c1f27; --line:#2c313d; --text:#e8eaf0; --sub:#9aa1b0; --accent:#4f8cff; --accent2:#ff5f7a; --mosaic:#38c793; }
   * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  /* ボタン・説明文は長押しでの文字選択とダブルタップズームを禁止する(画像には効かせない) */
+  button, label, h1, p, footer {
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; touch-action:manipulation;
+  }
   body { background:var(--bg); color:var(--text); font-family:-apple-system,"Hiragino Sans",sans-serif;
          padding:16px 16px calc(24px + env(safe-area-inset-bottom)); max-width:640px; margin:0 auto; }
   h1 { font-size:20px; padding:8px 0 2px; }
   .sub { color:var(--sub); font-size:12.5px; line-height:1.6; margin-bottom:14px; }
-  .modes { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:10px; }
+  .modes { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-bottom:10px; }
   .mode { border:1.5px solid var(--line); background:var(--card); color:var(--text); border-radius:12px;
-          padding:10px 0 8px; font-size:15px; font-weight:600; text-align:center; }
+          padding:10px 0 8px; font-size:14px; font-weight:600; text-align:center; }
   .mode small { display:block; font-weight:400; font-size:10px; color:var(--sub); margin-top:2px; }
   .mode.on { border-color:var(--accent); background:#1a2740; }
   .mode.on.rev { border-color:var(--accent2); background:#3a1c26; }
+  .mode.on.raw { border-color:var(--mosaic); background:#14261f; }
   .modehint { color:var(--sub); font-size:12px; line-height:1.6; margin-bottom:14px; min-height:2.6em; }
   .pick { display:block; width:100%; background:var(--accent); color:#fff; border:none; border-radius:14px;
           padding:16px; font-size:17px; font-weight:700; text-align:center; }
@@ -32,6 +37,10 @@
   .btn.main { background:var(--accent); border-color:var(--accent); color:#fff; }
   .btn.mosaic { border-color:var(--mosaic); color:var(--mosaic); }
   .hint { font-size:11.5px; color:var(--sub); margin-top:8px; line-height:1.5; }
+  .imgwrap { position:relative; }
+  .toast { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:max-content; max-width:90%;
+           background:rgba(10,12,16,.82); color:#fff; padding:12px 16px; border-radius:12px; font-size:14px;
+           line-height:1.6; text-align:center; pointer-events:none; opacity:0; transition:opacity .5s; }
   footer { color:var(--sub); font-size:11px; text-align:center; margin-top:26px; line-height:1.7; }
   /* モザイク編集画面 */
   #editor { position:fixed; inset:0; background:#0b0d12; z-index:10; display:none; flex-direction:column;
@@ -56,6 +65,7 @@
   <button class="mode on" data-m="中">中</button>
   <button class="mode" data-m="強">強</button>
   <button class="mode rev" data-m="逆">逆<small>明るい写り込み</small></button>
+  <button class="mode raw" data-m="そのまま">その<br>まま<small>黒潰しなし</small></button>
 </div>
 <p class="modehint" id="modehint"></p>
 
@@ -65,7 +75,7 @@
 
 <footer>元の写真は変更されない。保存を押した分だけ写真アプリに増える。<br>
 暗い画面の写り込み（顔・スマホ）＝弱/中/強 ／ 暗転演出に写った明るい台・カウンター＝逆<br>
-消え残った明るい写り込みは「モザイク仕上げ」で指でこすって消す。 v1.2</footer>
+消え残った明るい写り込みは「モザイク仕上げ」で指でこすって消す。 v1.3</footer>
 
 <div id="editor">
   <p id="edtitle">指でなぞった場所にモザイクがかかるよ</p>
@@ -91,7 +101,8 @@ const HINTS = {
   "弱": "暗いところを少しだけ黒に落とす。中で画面まで暗くなりすぎたときに。",
   "中": "おすすめ。暗い画面に写り込んだ顔・スマホを黒に落とす。",
   "強": "中で消え残ったときに。画面の暗い演出も潰れやすいので注意。",
-  "逆": "暗転演出のとき明るく写り込んだ後ろの台・データカウンター用。赤い演出は守る。"
+  "逆": "暗転演出のとき明るく写り込んだ後ろの台・データカウンター用。赤い演出は守る。",
+  "そのまま": "黒潰しをかけない。写真そのままにモザイクだけかけたいとき用。"
 };
 let mode = "中";
 try { const m = localStorage.getItem("utsurikomi-mode"); if (HINTS[m]) mode = m; } catch (e) {}
@@ -152,9 +163,11 @@ function processImage(img, m) {
   c.width = w; c.height = h;
   const ctx = c.getContext("2d");
   ctx.drawImage(img, 0, 0, w, h);
-  const id = ctx.getImageData(0, 0, w, h);
-  processPixels(id.data, m);
-  ctx.putImageData(id, 0, 0);
+  if (m !== "そのまま") {
+    const id = ctx.getImageData(0, 0, w, h);
+    processPixels(id.data, m);
+    ctx.putImageData(id, 0, 0);
+  }
   return c.toDataURL("image/jpeg", 0.92);
 }
 window.__processImage = processImage;
@@ -296,7 +309,7 @@ async function processItem(it) {
   await new Promise(r => setTimeout(r, 30));
   it.dataURL = processImage(it.img, mode);
   it.resultEl.src = it.dataURL;
-  it.nameEl.textContent = it.file.name + "（" + mode + "で処理済み）";
+  it.nameEl.textContent = it.file.name + "（" + (mode === "そのまま" ? "加工なし" : mode + "で処理済み") + "）";
 }
 
 document.getElementById("file").addEventListener("change", async (ev) => {
@@ -307,17 +320,30 @@ document.getElementById("file").addEventListener("change", async (ev) => {
 
     const card = document.createElement("div");
     card.className = "card";
-    card.innerHTML = '<p class="name"></p><img alt="処理結果">' +
-      '<div class="row"><button class="btn main">保存 / 共有</button>' +
+    card.innerHTML = '<p class="name"></p><div class="imgwrap"><img alt="処理結果"></div>' +
+      '<div class="row"><button class="btn main">📥 保存 / 共有</button>' +
       '<button class="btn">押してる間 元を表示</button></div>' +
       '<div class="row"><button class="btn mosaic">🟩 モザイク仕上げ（指でこする）</button></div>' +
-      '<p class="hint">画像を長押し→「"写真"に保存」でもOK。上のモード切替をするとモザイク仕上げはやり直しになるよ。</p>';
+      '<p class="hint">💾 画像の長押し保存もOK ／ モード切替でモザイク仕上げはやり直しになるよ</p>';
     listEl.prepend(card);
 
     const it = { file, img, dataURL: "",
                  cardEl: card, nameEl: card.querySelector(".name"), resultEl: card.querySelector("img") };
     items.push(it);
     await processItem(it);
+
+    // 初回だけ、写真の上に保存方法のヒントを出す(数秒で消える)
+    let seenTip = false;
+    try { seenTip = !!localStorage.getItem("utsurikomi-tip-v1"); } catch (e) {}
+    if (!seenTip) {
+      try { localStorage.setItem("utsurikomi-tip-v1", "1"); } catch (e) {}
+      const toast = document.createElement("div");
+      toast.className = "toast";
+      toast.innerHTML = "💾 保存は下の「📥 保存 / 共有」ボタン<br>画像の<b>長押し</b>でも保存できるよ";
+      card.querySelector(".imgwrap").appendChild(toast);
+      requestAnimationFrame(() => { toast.style.opacity = "1"; });
+      setTimeout(() => { toast.style.opacity = "0"; setTimeout(() => toast.remove(), 600); }, 4000);
+    }
 
     card.querySelector(".btn.main").addEventListener("click", async () => {
       const stem = it.file.name.replace(/\.[^.]+$/, "");
@@ -331,9 +357,9 @@ document.getElementById("file").addEventListener("change", async (ev) => {
       }
     });
     const cmp = card.querySelectorAll(".btn")[1];
-    const showOrig = () => { it.resultEl.src = it.img.src; };
+    const showOrig = (ev) => { if (ev && ev.type === "touchstart") ev.preventDefault(); it.resultEl.src = it.img.src; };
     const showDone = () => { it.resultEl.src = it.dataURL; };
-    cmp.addEventListener("touchstart", showOrig); cmp.addEventListener("touchend", showDone);
+    cmp.addEventListener("touchstart", showOrig, { passive: false }); cmp.addEventListener("touchend", showDone);
     cmp.addEventListener("touchcancel", showDone);
     cmp.addEventListener("mousedown", showOrig); cmp.addEventListener("mouseup", showDone);
     cmp.addEventListener("mouseleave", showDone);
