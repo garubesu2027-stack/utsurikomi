@@ -174,6 +174,9 @@
   .cell .tagP {
     position: absolute; inset-inline: 0; bottom: 0; height: 3px; background: var(--sig-rb);
   }
+  /* 空欄のマスは計算に入らないので、入っていないことが見て分かるようにする */
+  .cell.empty { border-style: dashed; }
+  .cell.empty .hd { opacity: .45; }
 
   .counter-legend {
     display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted);
@@ -382,6 +385,7 @@
       <span><b>現在</b> 最後の信号からのハマリ</span>
       <span><b>CZ/B</b> RBより後の信号</span>
       <span><b>RB</b> ラッシュ初当り</span>
+      <span>空のマスは数えません</span>
     </div>
     <div class="row-btns">
       <button type="button" id="add">CZ/Bを増やす</button>
@@ -503,18 +507,10 @@
     }));
 
     state.signals.forEach(function (g, i) {
-      var isP = (i === state.signals.length - 1);
-      var cell = makeCell({
+      counterEl.appendChild(makeCell({
         cls: "cz", head: "CZ/B", id: "c-sig-" + i, value: g,
-        onInput: function (v) { state.signals[i] = v; recompute(); }
-      });
-      if (isP) {
-        var tag = document.createElement("span");
-        tag.className = "tagP";
-        tag.title = "RB直後の信号";
-        cell.appendChild(tag);
-      }
-      counterEl.appendChild(cell);
+        onInput: function (v) { state.signals[i] = v; syncCounterMarks(); recompute(); }
+      }));
     });
 
     var anchor = document.createElement("div");
@@ -528,8 +524,29 @@
     anchor.appendChild(ah);
     anchor.appendChild(ab);
     counterEl.appendChild(anchor);
+    syncCounterMarks();
 
     delBtn.disabled = state.signals.length === 0;
+  }
+
+  // 空欄のマスを薄くし、RB直後の信号（＝いちばん右の埋まっているマス）に印を付け直す。
+  // 入力のたびに呼ぶので、マスを組み直さずに済む＝フォーカスが外れない。
+  function syncCounterMarks() {
+    var cells = counterEl.querySelectorAll(".cell.cz");
+    var last = -1;
+    state.signals.forEach(function (s, i) { if (!isBlank(s)) last = i; });
+    for (var i = 0; i < cells.length; i++) {
+      cells[i].classList.toggle("empty", isBlank(state.signals[i]));
+      var tag = cells[i].querySelector(".tagP");
+      if (i === last && !tag) {
+        tag = document.createElement("span");
+        tag.className = "tagP";
+        tag.title = "RB直後の信号";
+        cells[i].appendChild(tag);
+      } else if (i !== last && tag) {
+        tag.parentNode.removeChild(tag);
+      }
+    }
   }
 
   function makeCell(o) {
@@ -621,20 +638,22 @@
 
   /* ---------- 再計算 ---------- */
   function recompute() {
-    var n = state.signals.length;
-    var sum = state.signals.reduce(function (a, b) { return a + toNum(b); }, 0);
+    // 空欄のマスは「入力されていない」とみなして計算から外す。
+    // CZ/Bが1つも無い台でも、マスを減らさずそのまま判定できる。
+    var sigs = state.signals.filter(function (s) { return !isBlank(s); });
+    var n = sigs.length;
+    var sum = sigs.reduce(function (a, b) { return a + toNum(b); }, 0);
     var T = toNum(state.now) + sum;   // カウンターのRBからの合計G
     var czTotal = n * CZ_G;           // CZで使った分
     var A = T - czTotal;              // 液晶とATゲーム数を足したもの
     var L = toNum(state.lcd);
     var X = A - L;                    // ATで使ったゲーム数
-    var P = n > 0 ? toNum(state.signals[n - 1]) : null;  // RB直後の信号
+    var P = n > 0 ? toNum(sigs[n - 1]) : null;  // RB直後の信号
 
-    // 空欄が1つでも残っているうちは判定しない
-    var blank = isBlank(state.now) || isBlank(state.lcd) ||
-                state.signals.some(function (s) { return isBlank(s); });
+    // 現在とサブ液晶がそろうまでは判定しない
+    var blank = isBlank(state.now) || isBlank(state.lcd);
 
-    paintCalc(T, czTotal, n, L, X, P);
+    paintCalc(T, czTotal, n, L, X, P, sigs);
     if (blank) { paintIdle(); paintBandsIdle(); return; }
 
     var kind = classify(X, P, n);
@@ -648,7 +667,7 @@
     document.getElementById("v-title").textContent = "入力待ち";
     document.getElementById("v-at").textContent = "―";
     document.getElementById("v-body").textContent =
-      "データカウンターの履歴と、サブ液晶のゲーム数をすべて入れてください。";
+      "現在のハマリと、サブ液晶のゲーム数を入れてください。CZ/Bのマスは空のままでもかまいません。";
     document.getElementById("v-todo").hidden = true;
   }
 
@@ -762,10 +781,10 @@
     }
   }
 
-  function paintCalc(T, czTotal, n, L, X, P) {
+  function paintCalc(T, czTotal, n, L, X, P, sigs) {
     var box = document.getElementById("calc");
     box.textContent = "";
-    var terms = state.signals.map(function (s) { return toNum(s); });
+    var terms = sigs.map(function (s) { return toNum(s); });
     var expr = [toNum(state.now)].concat(terms).join(" ＋ ");
 
     row("カウンターのRBからの合計", T + "G", expr);
