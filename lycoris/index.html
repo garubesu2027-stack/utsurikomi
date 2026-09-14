@@ -483,7 +483,6 @@
   }
 
   // タップした位置ではなく必ず末尾にカーソルを置く。
-  // そのままバックスペースを押せば右の桁から消える。
   // （type="number" は仕様上カーソルを動かせないので入力欄は type="text"）
   function caretToEnd(input) {
     requestAnimationFrame(function () {
@@ -491,9 +490,20 @@
       try { input.setSelectionRange(n, n); } catch (e) { /* 無視 */ }
     });
   }
-  function bindCaret(input) {
+
+  // 入力欄の共通の振る舞い。onClear は空にしたことを外へ伝えるための呼び出し。
+  function bindField(input, onClear) {
     input.addEventListener("focus", function () { caretToEnd(input); });
     input.addEventListener("click", function () { caretToEnd(input); });
+    // バックスペースは1桁ずつではなく、1回で全部消す。
+    // ホールで次の台の数字を入れ直すときに速い。
+    input.addEventListener("keydown", function (e) {
+      if ((e.key === "Backspace" || e.keyCode === 8) && input.value !== "") {
+        e.preventDefault();
+        input.value = "";
+        if (onClear) onClear("");
+      }
+    });
   }
 
   /* ---------- カウンターの描画 ---------- */
@@ -568,7 +578,7 @@
       if (c !== input.value) { input.value = c; caretToEnd(input); }
       o.onInput(c);
     });
-    bindCaret(input);
+    bindField(input, o.onInput);
     cell.appendChild(hd);
     cell.appendChild(input);
     return cell;
@@ -839,7 +849,7 @@
     state.lcd = c;
     recompute();
   });
-  bindCaret(lcdEl);
+  bindField(lcdEl, function () { state.lcd = ""; recompute(); });
   lcdEl.value = state.lcd;
 
   renderCounter();
