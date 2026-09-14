@@ -495,15 +495,31 @@
   function bindField(input, onClear) {
     input.addEventListener("focus", function () { caretToEnd(input); });
     input.addEventListener("click", function () { caretToEnd(input); });
+
     // バックスペースは1桁ずつではなく、1回で全部消す。
     // ホールで次の台の数字を入れ直すときに速い。
+    function clearAll(e) {
+      if (input.value === "") return;
+      if (e) e.preventDefault();
+      input.value = "";
+      if (onClear) onClear("");
+    }
+    // iPhoneはキー名で取れる
     input.addEventListener("keydown", function (e) {
-      if ((e.key === "Backspace" || e.keyCode === 8) && input.value !== "") {
-        e.preventDefault();
-        input.value = "";
-        if (onClear) onClear("");
-      }
+      if (e.key === "Backspace" || e.keyCode === 8) clearAll(e);
     });
+    // Androidの一部キーボードはキー名を送ってこないので、削除の種類で取る
+    input.addEventListener("beforeinput", function (e) {
+      if (e.inputType === "deleteContentBackward") clearAll(e);
+    });
+    // それも素通りして末尾1桁だけ消えた場合の保険。その形なら全部消す。
+    // 空にするだけにして、後ろで走る通常の入力処理に状態の更新を任せる。
+    var before = input.value;
+    input.addEventListener("input", function () {
+      var now = input.value;
+      if (before.length > 0 && now === before.slice(0, -1)) input.value = "";
+    }, true);
+    input.addEventListener("input", function () { before = input.value; });
   }
 
   /* ---------- カウンターの描画 ---------- */
@@ -717,9 +733,14 @@
 
     var runs = buildRuns(A, P, n);
     var Xnow = A - L;
+    var rendered = 0;
 
     runs.forEach(function (r, i) {
       var lo = A - r.xhi, hi = A - r.xlo;
+      // サブ液晶は0未満にならない。そこに掛かる区間は表に出さない
+      if (hi < 0) return;
+      if (lo < 0) lo = 0;
+      rendered++;
       var text;
       if (i === 0) text = lo + "G 以上";
       else if (i === runs.length - 1) text = hi + "G 以下";
@@ -744,6 +765,16 @@
       tbody.appendChild(tr);
     });
 
+    if (rendered === 0) {
+      var tr0 = document.createElement("tr");
+      var td0 = document.createElement("td");
+      td0.colSpan = 2;
+      td0.className = "none";
+      td0.textContent = "この数字だと範囲が出せません。現在か信号を見直してください";
+      tr0.appendChild(td0);
+      tbody.appendChild(tr0);
+    }
+
     // 帯グラフ。判定が変わる境目のまわりだけを拡大して見せる
     var edges = [];
     for (var i = 1; i < runs.length; i++) edges.push(A - runs[i].xlo);
@@ -756,6 +787,7 @@
     } else {
       lo2 = A - 60; hi2 = A;
     }
+    if (lo2 < 0) lo2 = 0;              // 液晶は0未満にならない
     if (hi2 <= lo2) hi2 = lo2 + 1;
     var span = hi2 - lo2;
 
