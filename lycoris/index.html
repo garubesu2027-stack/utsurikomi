@@ -433,6 +433,7 @@
     <div class="calc-body" id="calc"></div>
   </details>
 
+
   <section class="notes">
     <h2>この計算が立っている前提</h2>
     <ul>
@@ -440,6 +441,7 @@
       <li>駆け抜け後の通常時に出るCZは<b>8G固定</b>（オポジットバトル／ファーストリコリス）。10Gのリコイル オブ リコリスは連チャン中にしか出ないため対象外</li>
       <li>駆け抜け時にATで使うゲーム数は<b>最短27G</b>（プロローグ7G＋リコリスラッシュ20G）</li>
       <li>グレーが出るのは、RB直後の信号が<b>CZだった場合とラッシュ中のボーナスだった場合の両方が成立する</b>とき。差は8Gぶんしかないのでゲーム数では割れない</li>
+      <li>グレーのときは<b>出玉で割れる</b>。RB以降にボーナスぶんの100枚以上の塊があれば連チャン後、プロローグの100枚で止まっていれば駆け抜け後</li>
     </ul>
   </section>
 
@@ -459,8 +461,8 @@
   var delBtn    = document.getElementById("del");
   var clearBtn  = document.getElementById("clear");
 
-  // 値は文字列で持つ。空欄と0を区別して「まだ入力されていない」を判定するため
-  // 初期値は元の解説ページの例。現在20G / CZ/B 196・43・56 / RB
+  // 値は文字列で持つ。空欄と0を区別して「まだ入力されていない」を判定するため。
+  // 初期値は解説ページの例。現在20G / CZ/B 196・43・56 / RB、サブ液晶250G。
   var state = { now: "20", signals: ["196", "43", "56"], lcd: "250" };
 
   function toNum(s) {
@@ -558,27 +560,41 @@
 
   /* ---------- 判定 ---------- */
   // X = ATで使ったゲーム数 = カウンター合計 － CZ分 － サブ液晶
+  //
+  // 2つの筋書きが成り立つかを別々に確かめる。
+  //   筋書き1（駆け抜け）  ATはX Gで終わり、Pの信号は通常時のCZ。
+  //     ATは最短27G。信号より前にATが終わっている必要があるので X ≦ P － 1。
+  //   筋書き2（連チャン後）Pの信号はリコリスラッシュ中のボーナス。
+  //     その場合CZを1回多く数えているので本当のATは X ＋ 8G。
+  //     信号がAT中に出るには X ＋ 8 ≧ P。
+  //
+  // 両方成り立てばグレー、片方だけならその判定、どちらも成り立たなければ入力の見直し。
   function classify(X, P, n) {
-    if (X < MIN_AT) return "miss";
-    if (n === 0) return "ok";              // RB後に信号がない＝ボーナスを引いていない
-    if (X >= P) return "ren";
-    if (X <= P - BONUS_SHIFT) return "ok";
-    return "gray";
+    var h1 = (X >= MIN_AT) && (n === 0 || X <= P - 1);
+    var h2 = (n > 0) && (X + BONUS_SHIFT >= P) && (X + BONUS_SHIFT >= MIN_AT);
+    if (h1 && h2) return "gray";
+    if (h1) return "ok";
+    if (h2) return "ren";
+    return "miss";
   }
 
-  // X（ATゲーム数）の範囲を、サブ液晶の範囲に直す。L = A － X
-  function toL(A, xlo, xhi) {
-    if (xlo > xhi) return null;
-    return { lo: A - xhi, hi: A - xlo };
+  // Xを小さい方から走らせ、判定が変わるところで区切る。
+  // Xが大きいほどサブ液晶は小さいので、できた区間はそのまま液晶の大きい順に並ぶ。
+  function buildRuns(A, P, n) {
+    var top = Math.max(MIN_AT + 1, Math.min(A, 3000));
+    var runs = [];
+    for (var X = 0; X <= top; X++) {
+      var k = classify(X, P, n);
+      var last = runs[runs.length - 1];
+      if (last && last.kind === k) { last.xhi = X; }
+      else { runs.push({ kind: k, xlo: X, xhi: X }); }
+    }
+    return runs;
   }
 
-  function fmtRange(r, opts) {
-    if (!r) return null;
-    if (opts && opts.openLow) return r.hi + "G 以下";
-    if (opts && opts.openHigh) return r.lo + "G 以上";
-    if (r.lo === r.hi) return r.lo + "G";
-    return r.lo + "〜" + r.hi + "G";
-  }
+  var LABEL  = { ok: "駆け抜け後", ren: "連チャン後", gray: "判定できない", miss: "数字を確認" };
+  var SWATCH = { ok: "sw-ok", ren: "sw-ren", gray: "sw-gray", miss: "sw-miss" };
+  var BARCLS = { ok: "b-ok", ren: "b-ren", gray: "b-gray", miss: "b-miss" };
 
   var VERDICT = {
     ok: {
@@ -657,16 +673,17 @@
     document.getElementById("v-title").textContent = v.title;
     document.getElementById("v-at").textContent = "ATで使ったG数 " + X + "G";
 
-    var body = v.body;
+    var body = v.body, todoText = v.todo;
     if (kind === "miss") {
-      body = "ATで使ったゲーム数が" + X + "Gになり、最短の" + MIN_AT + "Gを下回ります。この履歴ではありえない数字です。";
+      body = "ATで使ったゲーム数が" + X + "Gになり、最短の" + MIN_AT
+           + "Gを下回ります。この履歴ではありえない数字です。";
     } else if (kind === "ok" && n === 0) {
       body = "RBの後に信号が1つもありません。ボーナスを引いていれば信号が付くので、駆け抜けで確定です。";
     }
     document.getElementById("v-body").textContent = body;
 
     var todo = document.getElementById("v-todo");
-    todo.textContent = v.todo;
+    todo.textContent = todoText;
     todo.hidden = false;
   }
 
@@ -676,68 +693,66 @@
     tbody.textContent = "";
     bar.textContent = "";
 
-    var missR = toL(A, -9999, MIN_AT - 1);          // X < 27
-    var okR   = (n === 0) ? toL(A, MIN_AT, 9999)
-                          : toL(A, MIN_AT, P - BONUS_SHIFT);
-    var grayR = (n === 0) ? null
-                          : toL(A, Math.max(MIN_AT, P - BONUS_SHIFT + 1), P - 1);
-    var renR  = (n === 0) ? null
-                          : toL(A, Math.max(MIN_AT, P), 9999);
+    var runs = buildRuns(A, P, n);
+    var Xnow = A - L;
 
-    var rows = [
-      { k: "miss", sw: "sw-miss", label: "数字を確認", text: missR ? (missR.lo + "G 以上") : null },
-      { k: "ok",   sw: "sw-ok",   label: "駆け抜け後", text: fmtRange(okR, n === 0 ? { openLow: true } : null) },
-      { k: "gray", sw: "sw-gray", label: "判定できない", text: fmtRange(grayR) },
-      { k: "ren",  sw: "sw-ren",  label: "連チャン後", text: fmtRange(renR, { openLow: true }) }
-    ];
+    runs.forEach(function (r, i) {
+      var lo = A - r.xhi, hi = A - r.xlo;
+      var text;
+      if (i === 0) text = lo + "G 以上";
+      else if (i === runs.length - 1) text = hi + "G 以下";
+      else if (lo === hi) text = lo + "G";
+      else text = lo + "〜" + hi + "G";
 
-    rows.forEach(function (r) {
+      var on = (i === 0) ? (Xnow <= r.xhi)
+             : (i === runs.length - 1) ? (Xnow >= r.xlo)
+             : (Xnow >= r.xlo && Xnow <= r.xhi);
+
       var tr = document.createElement("tr");
-      if (r.k === kind) tr.className = "on";
+      if (on) tr.className = "on";
       var td1 = document.createElement("td");
       var sw = document.createElement("span");
-      sw.className = "swatch " + r.sw;
+      sw.className = "swatch " + SWATCH[r.kind];
       td1.appendChild(sw);
-      td1.appendChild(document.createTextNode(r.label));
+      td1.appendChild(document.createTextNode(LABEL[r.kind]));
       var td2 = document.createElement("td");
-      if (r.text === null) {
-        td2.className = "none";
-        td2.textContent = "この履歴では出ない";
-      } else {
-        td2.textContent = r.text;
-      }
+      td2.textContent = text;
       tr.appendChild(td1);
       tr.appendChild(td2);
       tbody.appendChild(tr);
     });
 
     // 帯グラフ。判定が変わる境目のまわりだけを拡大して見せる
-    var hi = A - MIN_AT + 14;
-    var lo = (n === 0) ? Math.max(0, A - MIN_AT - 60)
-                       : Math.max(0, A - P - 24);
-    if (hi <= lo) { hi = lo + 1; }
-    var span = hi - lo;
-    var seg = [];
-    if (n === 0) {
-      seg.push({ c: "b-ok", from: lo, to: A - MIN_AT });
-      seg.push({ c: "b-miss", from: A - MIN_AT, to: hi });
+    var edges = [];
+    for (var i = 1; i < runs.length; i++) edges.push(A - runs[i].xlo);
+    var lo2, hi2;
+    if (edges.length) {
+      var emin = Math.min.apply(null, edges);
+      var emax = Math.max.apply(null, edges);
+      var pad = Math.max(12, Math.round((emax - emin) * 0.35));
+      lo2 = emin - pad; hi2 = emax + pad;
     } else {
-      seg.push({ c: "b-ren",  from: lo,          to: A - P });
-      seg.push({ c: "b-gray", from: A - P,       to: A - P + BONUS_SHIFT - 1 });
-      seg.push({ c: "b-ok",   from: A - P + BONUS_SHIFT - 1, to: A - MIN_AT });
-      seg.push({ c: "b-miss", from: A - MIN_AT,  to: hi });
+      lo2 = A - 60; hi2 = A;
     }
-    seg.forEach(function (s) {
-      var w = Math.max(0, Math.min(s.to, hi) - Math.max(s.from, lo));
+    if (hi2 <= lo2) hi2 = lo2 + 1;
+    var span = hi2 - lo2;
+
+    // 左が液晶の小さい側になるよう、区間を逆から描く
+    runs.slice().reverse().forEach(function (r) {
+      var from = Math.max(A - r.xhi, lo2);
+      var to   = Math.min(A - r.xlo, hi2);
+      var w = to - from;
       if (w <= 0) return;
       var el = document.createElement("span");
-      el.className = s.c;
+      el.className = BARCLS[r.kind];
       el.style.flex = "0 0 " + (w / span * 100) + "%";
       bar.appendChild(el);
     });
+    // 端数で右端にすき間が出ないよう、最後の区間に余りを吸わせる
+    if (bar.lastChild) bar.lastChild.style.flex = "1 0 auto";
 
     var marker = document.getElementById("marker");
-    var pct = (L - lo) / span * 100;
+    var pct = (L - lo2) / span * 100;
     if (pct < 0 || pct > 100) {
       marker.hidden = true;
     } else {
