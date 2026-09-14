@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#eaeef3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f141b" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="駆け抜け判定">
+<meta name="description" content="スマスロ リコリス・リコイルのデータカウンター履歴とサブ液晶のゲーム数から、前回のリコリスラッシュが駆け抜けだったかを判定します。">
+<meta name="robots" content="noindex">
+<title>リコリス駆け抜け判定機</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Roboto+Mono:wght@500;700&display=swap">
+<style>
+  /* ============================================================
+     スマスロ リコリス・リコイル 駆け抜け判定機
+     データカウンターの履歴とサブ液晶のゲーム数から、
+     前回のリコリスラッシュが駆け抜けだったかを判定する。
+     配色は実機のデータカウンターの信号色に合わせている。
+     ============================================================ */
+
+  :root {
+    color-scheme: light;
+    --ground:   #eaeef3;
+    --panel:    #ffffff;
+    --panel-2:  #f4f7fa;
+    --line:     #d3dae3;
+    --line-2:   #e4e9ef;
+    --ink:      #141920;
+    --ink-2:    #3d4855;
+    --muted:    #626d7b;
+    --accent:   #1663c4;
+    --danger:   #d81717;
+    --warn:     #9c6100;
+    --sig-now:  #2f8f3a;
+    --sig-rb:   #1c86cc;
+    --sig-cz:   #bc2d95;
+    --tint-ok:   #e8f1fd;
+    --tint-ng:   #fdeaea;
+    --tint-gray: #fbf2df;
+    --tint-miss: #eef1f5;
+    --shadow:   0 1px 2px rgba(18,26,38,.07), 0 8px 22px rgba(18,26,38,.07);
+    --shadow-sm: 0 1px 2px rgba(18,26,38,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground:   #0f141b;
+      --panel:    #191f28;
+      --panel-2:  #212936;
+      --line:     #303a48;
+      --line-2:   #262f3c;
+      --ink:      #e9eef5;
+      --ink-2:    #c3ccd8;
+      --muted:    #93a0b0;
+      --accent:   #63aaf2;
+      --danger:   #ff7070;
+      --warn:     #e6a93a;
+      --sig-now:  #3fa94c;
+      --sig-rb:   #2e9ee2;
+      --sig-cz:   #d94bb4;
+      --tint-ok:   #12263d;
+      --tint-ng:   #3a1a1c;
+      --tint-gray: #33280f;
+      --tint-miss: #1e242e;
+      --shadow:   0 1px 2px rgba(0,0,0,.35), 0 8px 22px rgba(0,0,0,.32);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground:   #0f141b;
+    --panel:    #191f28;
+    --panel-2:  #212936;
+    --line:     #303a48;
+    --line-2:   #262f3c;
+    --ink:      #e9eef5;
+    --ink-2:    #c3ccd8;
+    --muted:    #93a0b0;
+    --accent:   #63aaf2;
+    --danger:   #ff7070;
+    --warn:     #e6a93a;
+    --sig-now:  #3fa94c;
+    --sig-rb:   #2e9ee2;
+    --sig-cz:   #d94bb4;
+    --tint-ok:   #12263d;
+    --tint-ng:   #3a1a1c;
+    --tint-gray: #33280f;
+    --tint-miss: #1e242e;
+    --shadow:   0 1px 2px rgba(0,0,0,.35), 0 8px 22px rgba(0,0,0,.32);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Zen Kaku Gothic New", "Hiragino Sans", system-ui, sans-serif;
+    font-weight: 500;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding-inline: 18px;
+    padding-block: 26px 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  /* 横並びのカウンターが親を押し広げないようにする（flex子要素の min-width:auto 対策） */
+  .wrap > *, .sec > * { min-width: 0; }
+
+  /* ---------- ヘッダー ---------- */
+  .masthead { display: flex; flex-direction: column; gap: 7px; }
+  .eyebrow {
+    font-size: 12px; font-weight: 700; letter-spacing: .14em;
+    color: var(--sig-cz); text-transform: uppercase;
+  }
+  h1 {
+    margin: 0; font-size: 27px; font-weight: 900; letter-spacing: -.01em;
+    text-wrap: balance; line-height: 1.28;
+  }
+  .lede { margin: 0; font-size: 14px; color: var(--muted); max-width: 44em; }
+
+  /* ---------- セクション見出し ---------- */
+  .sec { display: flex; flex-direction: column; gap: 11px; }
+  .sec-hd { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .sec-hd h2 {
+    margin: 0; font-size: 14px; font-weight: 700; letter-spacing: .04em; color: var(--ink);
+  }
+  .sec-hd .hint { font-size: 12px; color: var(--muted); }
+
+  /* ---------- データカウンター入力 ---------- */
+  .counter-scroll { overflow-x: auto; padding-bottom: 4px; margin-inline: -2px; }
+  .counter {
+    display: flex; gap: 7px; align-items: stretch; padding: 2px;
+    width: max-content; min-width: 100%;
+  }
+  .cell {
+    flex: none; width: 82px; border-radius: 9px; overflow: hidden;
+    border: 1px solid var(--line); background: var(--panel);
+    box-shadow: var(--shadow-sm); position: relative;
+  }
+  .cell .hd {
+    font-size: 11px; font-weight: 700; letter-spacing: .07em; color: #fff;
+    text-align: center; padding: 5px 2px 4px;
+  }
+  .cell.now .hd { background: var(--sig-now); }
+  .cell.cz  .hd { background: var(--sig-cz); }
+  .cell.rb  .hd { background: var(--sig-rb); }
+  .cell input {
+    display: block; width: 100%; border: 0; background: transparent;
+    text-align: center; color: var(--ink); padding: 9px 2px 10px;
+    font-family: "Roboto Mono", ui-monospace, monospace;
+    font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+  }
+  .cell input::-webkit-outer-spin-button,
+  .cell input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .cell input:focus { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 0 0 8px 8px; }
+
+  .cell.anchor { width: 82px; background: var(--panel-2); border-style: dashed; }
+  .cell.anchor .body {
+    padding: 11px 4px; text-align: center; font-size: 11px; line-height: 1.35;
+    color: var(--muted); font-weight: 700;
+  }
+  .cell .tagP {
+    position: absolute; inset-inline: 0; bottom: 0; height: 3px; background: var(--sig-rb);
+  }
+
+  .counter-legend {
+    display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted);
+  }
+  .counter-legend b { color: var(--ink-2); font-weight: 700; }
+
+  .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font-family: inherit; font-weight: 700; font-size: 13px; cursor: pointer;
+    border-radius: 8px; border: 1px solid var(--line); background: var(--panel);
+    color: var(--ink); padding: 8px 14px; box-shadow: var(--shadow-sm);
+  }
+  button:hover { background: var(--panel-2); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button[disabled] { opacity: .4; cursor: not-allowed; }
+
+  /* ---------- サブ液晶入力 ---------- */
+  .lcd {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; box-shadow: var(--shadow-sm);
+  }
+  .lcd label { font-size: 13px; font-weight: 700; color: var(--ink-2); }
+  .lcd .field { display: flex; align-items: baseline; gap: 6px; margin-inline-start: auto; }
+  .lcd input {
+    width: 108px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--panel-2); color: var(--ink); padding: 7px 10px; text-align: right;
+    font-family: "Roboto Mono", ui-monospace, monospace;
+    font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+  }
+  .lcd input::-webkit-outer-spin-button,
+  .lcd input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .lcd input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .lcd .unit { font-size: 14px; font-weight: 700; color: var(--muted); }
+
+  /* ---------- 判定 ---------- */
+  .verdict {
+    border-radius: 14px; padding: 18px 18px 17px; box-shadow: var(--shadow);
+    border: 1px solid var(--line); background: var(--panel);
+    display: flex; flex-direction: column; gap: 9px;
+    border-inline-start: 6px solid var(--muted);
+  }
+  .verdict.ok   { background: var(--tint-ok);   border-inline-start-color: var(--accent); }
+  .verdict.ng   { background: var(--tint-ng);   border-inline-start-color: var(--danger); }
+  .verdict.gray { background: var(--tint-gray); border-inline-start-color: var(--warn); }
+  .verdict.miss { background: var(--tint-miss); border-inline-start-color: var(--muted); }
+
+  .verdict-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .verdict h3 {
+    margin: 0; font-size: 30px; font-weight: 900; letter-spacing: -.015em; line-height: 1.15;
+  }
+  .verdict.ok   h3 { color: var(--accent); }
+  .verdict.ng   h3 { color: var(--danger); }
+  .verdict.gray h3 { color: var(--warn); }
+  .verdict.miss h3 { color: var(--ink-2); }
+  .atbadge {
+    font-family: "Roboto Mono", ui-monospace, monospace;
+    font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+    padding: 4px 11px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .verdict p { margin: 0; font-size: 14.5px; color: var(--ink-2); }
+  .verdict .todo {
+    margin: 0; font-size: 13.5px; font-weight: 700; color: var(--ink);
+    padding-top: 9px; border-top: 1px solid var(--line);
+  }
+
+  /* ---------- 境界の帯 ---------- */
+  .bands { display: flex; flex-direction: column; gap: 9px; }
+  .bar {
+    display: flex; height: 15px; border-radius: 7px; overflow: hidden;
+    border: 1px solid var(--line); background: var(--panel-2);
+  }
+  .bar span { display: block; }
+  .bar .b-ren  { background: var(--danger); }
+  .bar .b-gray { background: var(--warn); }
+  .bar .b-ok   { background: var(--accent); }
+  .bar .b-miss { background: var(--muted); opacity: .45; }
+  .marker-track { position: relative; height: 17px; }
+  .marker {
+    position: absolute; top: 0; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    font-size: 11px; font-weight: 700; color: var(--ink); white-space: nowrap;
+  }
+  .marker i { display: block; width: 2px; height: 7px; background: var(--ink); }
+
+  table.ranges { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.ranges th {
+    text-align: start; font-size: 11px; letter-spacing: .07em; color: var(--muted);
+    font-weight: 700; padding: 0 0 6px;
+  }
+  table.ranges th:last-child { text-align: end; }
+  table.ranges td {
+    padding: 8px 0; border-top: 1px solid var(--line-2); vertical-align: baseline;
+  }
+  table.ranges td:last-child {
+    text-align: end; font-family: "Roboto Mono", ui-monospace, monospace;
+    font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  table.ranges tr.on td { background: var(--panel-2); }
+  table.ranges tr.on td:first-child { border-start-start-radius: 7px; border-end-start-radius: 7px; }
+  table.ranges tr.on td:last-child  { border-start-end-radius: 7px; border-end-end-radius: 7px; }
+  .swatch {
+    display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+    margin-inline-end: 8px; vertical-align: baseline;
+  }
+  .sw-ren { background: var(--danger); } .sw-gray { background: var(--warn); }
+  .sw-ok  { background: var(--accent); } .sw-miss { background: var(--muted); opacity: .5; }
+  .ranges .none { color: var(--muted); font-weight: 500; }
+
+  /* ---------- 内訳 ---------- */
+  details.calc {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow-sm); overflow: hidden;
+  }
+  details.calc > summary {
+    cursor: pointer; padding: 12px 16px; font-size: 13px; font-weight: 700; color: var(--ink-2);
+    list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  details.calc > summary::-webkit-details-marker { display: none; }
+  details.calc > summary::after { content: "▾"; color: var(--muted); font-size: 12px; }
+  details.calc[open] > summary::after { content: "▴"; }
+  details.calc > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .calc-body { padding: 0 16px 15px; display: flex; flex-direction: column; gap: 0; }
+  .calc-row {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+    padding: 7px 0; border-top: 1px solid var(--line-2); font-size: 13.5px;
+  }
+  .calc-row .k { color: var(--muted); }
+  .calc-row .v {
+    font-family: "Roboto Mono", ui-monospace, monospace; font-weight: 700;
+    font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap;
+  }
+  .calc-row.total { border-top: 2px solid var(--line); }
+  .calc-row.total .k { color: var(--ink); font-weight: 700; }
+  .calc-row .memo { font-size: 11.5px; color: var(--muted); font-family: inherit; font-weight: 500; }
+
+  /* ---------- 前提 ---------- */
+  .notes {
+    font-size: 12.5px; color: var(--muted); display: flex; flex-direction: column; gap: 6px;
+    border-top: 1px solid var(--line); padding-top: 16px;
+  }
+  .notes h2 { margin: 0 0 2px; font-size: 12px; letter-spacing: .06em; color: var(--ink-2); }
+  .notes ul { margin: 0; padding-inline-start: 1.15em; display: flex; flex-direction: column; gap: 4px; }
+  .notes b { color: var(--ink-2); font-weight: 700; }
+
+  @media (max-width: 430px) {
+    h1 { font-size: 23px; }
+    .verdict h3 { font-size: 25px; }
+    .lcd .field { margin-inline-start: 0; width: 100%; justify-content: flex-end; }
+    /* 信号5つぶん（現在＋CZ/B3つ＋RB）が横スクロールなしで収まる幅まで詰める */
+    .counter { gap: 6px; }
+    .cell, .cell.anchor { width: 64px; }
+    .cell input { font-size: 21px; }
+    .cell .hd { font-size: 10px; letter-spacing: .03em; }
+    .cell.anchor .body { font-size: 10px; padding: 10px 2px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<style>
+  /* ---- 単体ページ用の土台（Artifact版では実行環境が用意している分） ---- */
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+
+  /* iPhoneのホーム画面から起動したとき、上端の時計と重ならないようにする */
+  .wrap {
+    padding-block: calc(26px + env(safe-area-inset-top)) calc(56px + env(safe-area-inset-bottom));
+    padding-inline: max(18px, env(safe-area-inset-left)) max(18px, env(safe-area-inset-right));
+  }
+
+  /* ボタンの連打によるダブルタップズームと、長押しでの文字選択UIを止める */
+  button { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .eyebrow, .sec-hd, .counter-legend, .cell .hd, .cell.anchor .body,
+  table.ranges th, .swatch { -webkit-user-select: none; user-select: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">スマスロ リコリス・リコイル</div>
+    <h1>駆け抜け判定機</h1>
+    <p class="lede">データカウンターの履歴とサブ液晶のゲーム数から、前回のリコリスラッシュが駆け抜けだったかを判定します。駆け抜けていれば短縮状態です。</p>
+  </header>
+
+  <section class="sec">
+    <div class="sec-hd">
+      <h2>データカウンターの履歴</h2>
+      <span class="hint">左が新しい。RBに当たるまで入力</span>
+    </div>
+    <div class="counter-scroll">
+      <div class="counter" id="counter"></div>
+    </div>
+    <div class="counter-legend">
+      <span><b>現在</b> 最後の信号からのハマリ</span>
+      <span><b>CZ/B</b> RBより後の信号</span>
+      <span><b>RB</b> ラッシュ初当り</span>
+    </div>
+    <div class="row-btns">
+      <button type="button" id="add">CZ/Bを増やす</button>
+      <button type="button" id="del">減らす</button>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-hd">
+      <h2>サブ液晶</h2>
+      <span class="hint">AT間のゲーム数</span>
+    </div>
+    <div class="lcd">
+      <label for="lcd">画面に出ているゲーム数</label>
+      <div class="field">
+        <input id="lcd" type="number" inputmode="numeric" min="0" max="9999" value="250">
+        <span class="unit">G</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="verdict miss" id="verdict">
+    <div class="verdict-top">
+      <h3 id="v-title">—</h3>
+      <span class="atbadge" id="v-at">—</span>
+    </div>
+    <p id="v-body">—</p>
+    <p class="todo" id="v-todo" hidden>—</p>
+  </section>
+
+  <section class="sec bands">
+    <div class="sec-hd">
+      <h2>サブ液晶がいくつなら、どう転ぶか</h2>
+    </div>
+    <div class="marker-track"><div class="marker" id="marker" hidden><span id="marker-label">—</span><i></i></div></div>
+    <div class="bar" id="bar"></div>
+    <table class="ranges">
+      <thead>
+        <tr><th>判定</th><th>サブ液晶</th></tr>
+      </thead>
+      <tbody id="ranges"></tbody>
+    </table>
+  </section>
+
+  <details class="calc">
+    <summary>計算の内訳</summary>
+    <div class="calc-body" id="calc"></div>
+  </details>
+
+  <section class="notes">
+    <h2>この計算が立っている前提</h2>
+    <ul>
+      <li>サブ液晶は<b>AT間</b>のゲーム数を表示し、<b>CZ中は止まる</b></li>
+      <li>駆け抜け後の通常時に出るCZは<b>8G固定</b>（オポジットバトル／ファーストリコリス）。10Gのリコイル オブ リコリスは連チャン中にしか出ないため対象外</li>
+      <li>駆け抜け時にATで使うゲーム数は<b>最短27G</b>（プロローグ7G＋リコリスラッシュ20G）</li>
+      <li>グレーが出るのは、RB直後の信号が<b>CZだった場合とラッシュ中のボーナスだった場合の両方が成立する</b>とき。差は8Gぶんしかないのでゲーム数では割れない</li>
+    </ul>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var MIN_AT = 27;   // 駆け抜け時にATで使う最短ゲーム数（プロローグ7G＋ラッシュ20G）
+  var CZ_G   = 8;    // CZ1回あたりの消費ゲーム数
+  var BONUS_SHIFT = 8; // ボーナスをCZと数え違えたときにズレる幅
+
+  var counterEl = document.getElementById("counter");
+  var lcdEl     = document.getElementById("lcd");
+  var addBtn    = document.getElementById("add");
+  var delBtn    = document.getElementById("del");
+
+  // 初期値は元の解説ページの例。現在20G / CZ/B 196・43・56 / RB
+  var state = { now: 20, signals: [196, 43, 56] };
+
+  function num(v, fallback) {
+    var n = parseInt(v, 10);
+    return (isNaN(n) || n < 0) ? fallback : n;
+  }
+
+  /* ---------- カウンターの描画 ---------- */
+  function renderCounter() {
+    counterEl.textContent = "";
+
+    counterEl.appendChild(makeCell({
+      cls: "now", head: "現在", id: "c-now", value: state.now,
+      onInput: function (v) { state.now = v; recompute(); }
+    }));
+
+    state.signals.forEach(function (g, i) {
+      var isP = (i === state.signals.length - 1);
+      var cell = makeCell({
+        cls: "cz", head: "CZ/B", id: "c-sig-" + i, value: g,
+        onInput: function (v) { state.signals[i] = v; recompute(); }
+      });
+      if (isP) {
+        var tag = document.createElement("span");
+        tag.className = "tagP";
+        tag.title = "RB直後の信号";
+        cell.appendChild(tag);
+      }
+      counterEl.appendChild(cell);
+    });
+
+    var anchor = document.createElement("div");
+    anchor.className = "cell rb anchor";
+    var ah = document.createElement("div");
+    ah.className = "hd";
+    ah.textContent = "RB";
+    var ab = document.createElement("div");
+    ab.className = "body";
+    ab.textContent = "ここから";
+    anchor.appendChild(ah);
+    anchor.appendChild(ab);
+    counterEl.appendChild(anchor);
+
+    delBtn.disabled = state.signals.length === 0;
+  }
+
+  function makeCell(o) {
+    var cell = document.createElement("div");
+    cell.className = "cell " + o.cls;
+    var hd = document.createElement("div");
+    hd.className = "hd";
+    hd.textContent = o.head;
+    var input = document.createElement("input");
+    input.type = "number";
+    input.inputMode = "numeric";
+    input.min = "0";
+    input.max = "9999";
+    input.id = o.id;
+    input.value = String(o.value);
+    input.addEventListener("input", function () {
+      o.onInput(num(input.value, 0));
+    });
+    cell.appendChild(hd);
+    cell.appendChild(input);
+    return cell;
+  }
+
+  /* ---------- 判定 ---------- */
+  // X = ATで使ったゲーム数 = カウンター合計 － CZ分 － サブ液晶
+  function classify(X, P, n) {
+    if (X < MIN_AT) return "miss";
+    if (n === 0) return "ok";              // RB後に信号がない＝ボーナスを引いていない
+    if (X >= P) return "ren";
+    if (X <= P - BONUS_SHIFT) return "ok";
+    return "gray";
+  }
+
+  // X（ATゲーム数）の範囲を、サブ液晶の範囲に直す。L = A － X
+  function toL(A, xlo, xhi) {
+    if (xlo > xhi) return null;
+    return { lo: A - xhi, hi: A - xlo };
+  }
+
+  function fmtRange(r, opts) {
+    if (!r) return null;
+    if (opts && opts.openLow) return r.hi + "G 以下";
+    if (opts && opts.openHigh) return r.lo + "G 以上";
+    if (r.lo === r.hi) return r.lo + "G";
+    return r.lo + "〜" + r.hi + "G";
+  }
+
+  var VERDICT = {
+    ok: {
+      cls: "ok", title: "駆け抜け後",
+      body: "前回のリコリスラッシュは駆け抜けています。短縮状態です。",
+      todo: "天井はCZ間250G／AT間600Gに短縮。通常より浅い位置から狙えます。"
+    },
+    ren: {
+      cls: "ng", title: "連チャン後",
+      body: "リコリスラッシュ中にボーナスを引いています。駆け抜けていません。",
+      todo: "天井はCZ間600G／AT間850Gのまま。短縮を前提にした狙い方はできません。"
+    },
+    gray: {
+      cls: "gray", title: "判定できない",
+      body: "駆け抜けた場合と、ラッシュ中にボーナスを1回引いた場合の両方が成り立ちます。ゲーム数だけでは割れません。",
+      todo: "出玉を見てください。RB以降に100枚以上の塊があれば連チャン後、プロローグの100枚だけで止まっていれば駆け抜け後です。"
+    },
+    miss: {
+      cls: "miss", title: "数字を確認",
+      body: "",
+      todo: "信号の数か、サブ液晶の読みを確かめてください。"
+    }
+  };
+
+  /* ---------- 再計算 ---------- */
+  function recompute() {
+    var n = state.signals.length;
+    var sum = state.signals.reduce(function (a, b) { return a + b; }, 0);
+    var T = state.now + sum;          // カウンターのRBからの合計G
+    var czTotal = n * CZ_G;           // CZで使った分
+    var A = T - czTotal;              // 液晶とATゲーム数を足したもの
+    var L = num(lcdEl.value, 0);
+    var X = A - L;                    // ATで使ったゲーム数
+    var P = n > 0 ? state.signals[n - 1] : null;  // RB直後の信号
+
+    var kind = classify(X, P, n);
+    paintVerdict(kind, X, A, P, n);
+    paintBands(kind, A, P, n, L);
+    paintCalc(T, czTotal, n, L, X, P);
+  }
+
+  function paintVerdict(kind, X, A, P, n) {
+    var v = VERDICT[kind];
+    var box = document.getElementById("verdict");
+    box.className = "verdict " + v.cls;
+    document.getElementById("v-title").textContent = v.title;
+    document.getElementById("v-at").textContent = "ATで使ったG数 " + X + "G";
+
+    var body = v.body;
+    if (kind === "miss") {
+      body = "ATで使ったゲーム数が" + X + "Gになり、最短の" + MIN_AT + "Gを下回ります。この履歴ではありえない数字です。";
+    } else if (kind === "ok" && n === 0) {
+      body = "RBの後に信号が1つもありません。ボーナスを引いていれば信号が付くので、駆け抜けで確定です。";
+    }
+    document.getElementById("v-body").textContent = body;
+
+    var todo = document.getElementById("v-todo");
+    todo.textContent = v.todo;
+    todo.hidden = false;
+  }
+
+  function paintBands(kind, A, P, n, L) {
+    var tbody = document.getElementById("ranges");
+    var bar = document.getElementById("bar");
+    tbody.textContent = "";
+    bar.textContent = "";
+
+    var missR = toL(A, -9999, MIN_AT - 1);          // X < 27
+    var okR   = (n === 0) ? toL(A, MIN_AT, 9999)
+                          : toL(A, MIN_AT, P - BONUS_SHIFT);
+    var grayR = (n === 0) ? null
+                          : toL(A, Math.max(MIN_AT, P - BONUS_SHIFT + 1), P - 1);
+    var renR  = (n === 0) ? null
+                          : toL(A, Math.max(MIN_AT, P), 9999);
+
+    var rows = [
+      { k: "miss", sw: "sw-miss", label: "数字を確認", text: missR ? (missR.lo + "G 以上") : null },
+      { k: "ok",   sw: "sw-ok",   label: "駆け抜け後", text: fmtRange(okR, n === 0 ? { openLow: true } : null) },
+      { k: "gray", sw: "sw-gray", label: "判定できない", text: fmtRange(grayR) },
+      { k: "ren",  sw: "sw-ren",  label: "連チャン後", text: fmtRange(renR, { openLow: true }) }
+    ];
+
+    rows.forEach(function (r) {
+      var tr = document.createElement("tr");
+      if (r.k === kind) tr.className = "on";
+      var td1 = document.createElement("td");
+      var sw = document.createElement("span");
+      sw.className = "swatch " + r.sw;
+      td1.appendChild(sw);
+      td1.appendChild(document.createTextNode(r.label));
+      var td2 = document.createElement("td");
+      if (r.text === null) {
+        td2.className = "none";
+        td2.textContent = "この履歴では出ない";
+      } else {
+        td2.textContent = r.text;
+      }
+      tr.appendChild(td1);
+      tr.appendChild(td2);
+      tbody.appendChild(tr);
+    });
+
+    // 帯グラフ。判定が変わる境目のまわりだけを拡大して見せる
+    var hi = A - MIN_AT + 14;
+    var lo = (n === 0) ? Math.max(0, A - MIN_AT - 60)
+                       : Math.max(0, A - P - 24);
+    if (hi <= lo) { hi = lo + 1; }
+    var span = hi - lo;
+    var seg = [];
+    if (n === 0) {
+      seg.push({ c: "b-ok", from: lo, to: A - MIN_AT });
+      seg.push({ c: "b-miss", from: A - MIN_AT, to: hi });
+    } else {
+      seg.push({ c: "b-ren",  from: lo,          to: A - P });
+      seg.push({ c: "b-gray", from: A - P,       to: A - P + BONUS_SHIFT - 1 });
+      seg.push({ c: "b-ok",   from: A - P + BONUS_SHIFT - 1, to: A - MIN_AT });
+      seg.push({ c: "b-miss", from: A - MIN_AT,  to: hi });
+    }
+    seg.forEach(function (s) {
+      var w = Math.max(0, Math.min(s.to, hi) - Math.max(s.from, lo));
+      if (w <= 0) return;
+      var el = document.createElement("span");
+      el.className = s.c;
+      el.style.flex = "0 0 " + (w / span * 100) + "%";
+      bar.appendChild(el);
+    });
+
+    var marker = document.getElementById("marker");
+    var pct = (L - lo) / span * 100;
+    if (pct < 0 || pct > 100) {
+      marker.hidden = true;
+    } else {
+      marker.hidden = false;
+      marker.style.left = pct + "%";
+      document.getElementById("marker-label").textContent = "いま " + L + "G";
+    }
+  }
+
+  function paintCalc(T, czTotal, n, L, X, P) {
+    var box = document.getElementById("calc");
+    box.textContent = "";
+    var terms = state.signals.slice();
+    var expr = [state.now].concat(terms).join(" ＋ ");
+
+    row("カウンターのRBからの合計", T + "G", expr);
+    row("CZで使った分", "－ " + czTotal + "G", CZ_G + "G × " + n + "回");
+    row("サブ液晶", "－ " + L + "G", null);
+    row("ATで使ったゲーム数", X + "G", null, true);
+    if (n > 0) {
+      row("駆け抜けと言える上限", (P - BONUS_SHIFT) + "G", "RB直後の信号 " + P + "G － " + BONUS_SHIFT + "G");
+      row("ATゲーム数の下限", MIN_AT + "G", "プロローグ7G ＋ ラッシュ20G");
+    }
+
+    function row(k, v, memo, isTotal) {
+      var el = document.createElement("div");
+      el.className = "calc-row" + (isTotal ? " total" : "");
+      var kk = document.createElement("span");
+      kk.className = "k";
+      kk.textContent = k;
+      if (memo) {
+        var m = document.createElement("span");
+        m.className = "memo";
+        m.textContent = "　" + memo;
+        kk.appendChild(m);
+      }
+      var vv = document.createElement("span");
+      vv.className = "v";
+      vv.textContent = v;
+      el.appendChild(kk);
+      el.appendChild(vv);
+      box.appendChild(el);
+    }
+  }
+
+  /* ---------- 操作 ---------- */
+  addBtn.addEventListener("click", function () {
+    if (state.signals.length >= 8) return;
+    state.signals.push(50);
+    renderCounter();
+    recompute();
+  });
+  delBtn.addEventListener("click", function () {
+    if (state.signals.length === 0) return;
+    state.signals.pop();
+    renderCounter();
+    recompute();
+  });
+  lcdEl.addEventListener("input", recompute);
+
+  renderCounter();
+  recompute();
+})();
+</script>
+</body>
+</html>
