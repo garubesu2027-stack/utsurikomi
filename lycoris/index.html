@@ -444,6 +444,8 @@
       <li>サブ液晶は<b>AT間</b>のゲーム数を表示し、<b>CZ中は止まる</b></li>
       <li>駆け抜け後の通常時に出るCZは<b>8G固定</b>（オポジットバトル／ファーストリコリス）。10Gのリコイル オブ リコリスは連チャン中にしか出ないため対象外</li>
       <li>駆け抜け時にATで使うゲーム数は<b>最短27G</b>（プロローグ7G＋リコリスラッシュ20G）</li>
+      <li>駆け抜け後はCZ間の天井も250Gに短縮されるが、<b>CZに1回当たると消える</b>。そのため駆け抜け判定には<b>RB後の信号の数＝CZスルー回数</b>を添える（駆け抜け後の信号はすべてAT後のCZ）</li>
+      <li>連チャン後のスルー判定：0スルーなら、いちばん新しい信号（AT中のボーナス）からの「現在」に通常時が丸ごと入るので<b>現在 ≧ サブ液晶</b>になる。よって<b>サブ液晶が現在より大きければ1スルー以上</b>で確定。そうでなければ決められない</li>
       <li>「数字を確認」が出たら、信号の数かサブ液晶の読みを見直す。とくに<b>ATで使ったG数</b>が27Gを大きく超えているのに駆け抜け判定なら、STがレア役で伸びたか、どこかを読み違えている</li>
     </ul>
   </section>
@@ -640,7 +642,7 @@
     ok: {
       cls: "ok", title: "駆け抜け後",
       body: "前回のリコリスラッシュは駆け抜けています。短縮状態です。",
-      todo: "天井はCZ間250G／AT間600Gに短縮。通常より浅い位置から狙えます。"
+      todo: "CZ間250G・AT間600Gの両方が短縮中です。"
     },
     ren: {
       cls: "ng", title: "連チャン後",
@@ -675,7 +677,7 @@
     if (blank) { paintIdle(); paintBandsIdle(); return; }
 
     var kind = classify(X, P, n);
-    paintVerdict(kind, X, A, P, n);
+    paintVerdict(kind, X, A, P, n, L, toNum(state.now));
     paintBands(kind, A, P, n, L);
   }
 
@@ -703,11 +705,25 @@
     document.getElementById("marker").hidden = true;
   }
 
-  function paintVerdict(kind, X, A, P, n) {
+  // CZスルー回数の添え書き。
+  //   駆け抜け後 … RB後の信号はすべてAT後のCZなので、信号の数がそのままスルー回数。
+  //               0スルーならCZ間250Gの天井がまだ生きている（CZに1回当たると消える）。
+  //   連チャン後 … 0スルー（信号が全部AT中のボーナス）なら、いちばん新しい信号からの
+  //               「現在」に通常時が丸ごと入るので 現在 ≧ サブ液晶。
+  //               サブ液晶 ＞ 現在 なら1スルー以上で確定。そうでなければ決められない。
+  function sluru(kind, n, L, now) {
+    if (kind === "ok")  return { title: "駆け抜け後・CZ " + n + "スルー", sure: true, n: n };
+    if (kind === "ren") return (L > now) ? { title: "連チャン後・CZ 1スルー以上", sure: true }
+                                         : { title: "連チャン後", sure: false };
+    return null;
+  }
+
+  function paintVerdict(kind, X, A, P, n, L, now) {
     var v = VERDICT[kind];
     var box = document.getElementById("verdict");
     box.className = "verdict " + v.cls;
-    document.getElementById("v-title").textContent = v.title;
+    var s = sluru(kind, n, L, now);
+    document.getElementById("v-title").textContent = s ? s.title : v.title;
     document.getElementById("v-at").textContent = "ATで使ったG数 " + X + "G";
 
     var body = v.body, todoText = v.todo;
@@ -716,6 +732,13 @@
            + "Gを下回ります。この履歴ではありえない数字です。";
     } else if (kind === "ok" && n === 0) {
       body = "RBの後に信号が1つもありません。ボーナスを引いていれば信号が付くので、駆け抜けで確定です。";
+    } else if (kind === "ok") {
+      body = "前回のリコリスラッシュは駆け抜けています。RB後の信号" + n + "つはすべてAT後のCZです。";
+      todoText = "250GのCZ天井は消化済み。残るのはAT間600G＋αの短縮です。";
+    } else if (kind === "ren") {
+      body = s.sure
+        ? "リコリスラッシュ中にボーナスを引いています。駆け抜けていません。サブ液晶が現在より大きいので、いちばん新しい信号はAT後のCZです。"
+        : "リコリスラッシュ中にボーナスを引いています。駆け抜けていません。CZをスルーしたかは、この履歴では決められません。";
     }
     document.getElementById("v-body").textContent = body;
 
