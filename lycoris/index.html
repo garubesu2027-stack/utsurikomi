@@ -325,10 +325,18 @@
 
   /* ---------- 記事への導線 ---------- */
   .readmore {
-    display: block; text-decoration: none; color: inherit;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    display: flex; align-items: center; gap: 12px;
+    text-decoration: none; color: inherit;
+    background: linear-gradient(135deg, var(--panel) 55%, var(--tint-ok) 100%);
+    border: 1px solid var(--line); border-inline-start: 4px solid var(--accent);
+    border-radius: 14px;
     padding: 14px 16px; margin-bottom: 18px; box-shadow: var(--shadow-sm);
   }
+  .readmore .ricon {
+    flex: 0 0 auto; width: 46px; height: 46px; border-radius: 12px;
+    background: #fff; border: 1px solid var(--line-2);
+  }
+  .readmore .rbody { min-width: 0; }
   .readmore .lead { font-size: 12.5px; color: var(--muted); margin: 0 0 6px; }
   .readmore .ttl {
     font-size: 15px; font-weight: 700; color: var(--accent); margin: 0 0 4px;
@@ -337,13 +345,21 @@
   .readmore .ttl::after { content: "→"; font-weight: 400; }
   .readmore .site { font-size: 11.5px; color: var(--muted); margin: 0; }
 
-  /* ---------- 前提 ---------- */
-  .notes {
-    font-size: 12.5px; color: var(--muted); display: flex; flex-direction: column; gap: 6px;
-    border-top: 1px solid var(--line); padding-top: 16px;
+  /* ---------- 前提（普段は畳んでおく。ホールで開いたとき画面を占領しないように） ---------- */
+  details.notes {
+    font-size: 12.5px; color: var(--muted);
+    border-top: 1px solid var(--line); padding-top: 10px;
   }
-  .notes h2 { margin: 0 0 2px; font-size: 12px; letter-spacing: .06em; color: var(--ink-2); }
-  .notes ul { margin: 0; padding-inline-start: 1.15em; display: flex; flex-direction: column; gap: 4px; }
+  details.notes > summary {
+    cursor: pointer; padding: 6px 0; font-size: 12px; font-weight: 700;
+    letter-spacing: .06em; color: var(--ink-2);
+    list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  details.notes > summary::-webkit-details-marker { display: none; }
+  details.notes > summary::after { content: "▾"; color: var(--muted); font-size: 12px; }
+  details.notes[open] > summary::after { content: "▴"; }
+  details.notes > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .notes ul { margin: 6px 0 0; padding-inline-start: 1.15em; display: flex; flex-direction: column; gap: 4px; }
   .notes b { color: var(--ink-2); font-weight: 700; }
 
   @media (max-width: 430px) {
@@ -456,13 +472,16 @@
 
 
   <a class="readmore" href="https://hetakuso-super.com/slot-llycoris-4/">
-    <p class="lead">狙い目・やめどきの参考はこちら</p>
-    <p class="ttl">Lリコリス・リコイル｜天井狙い・やめどき</p>
-    <p class="site">かめとうさぎのパチスロブログ</p>
+    <img class="ricon" src="blog-icon.png" alt="" width="46" height="46">
+    <div class="rbody">
+      <p class="lead">狙い目・やめどきの参考はこちら</p>
+      <p class="ttl">Lリコリス・リコイル｜天井狙い・やめどき</p>
+      <p class="site">かめとうさぎのパチスロブログ</p>
+    </div>
   </a>
 
-  <section class="notes">
-    <h2>この計算が立っている前提</h2>
+  <details class="notes">
+    <summary>この計算が立っている前提</summary>
     <ul>
       <li>サブ液晶は<b>AT間</b>のゲーム数を表示し、<b>CZ中は止まる</b></li>
       <li>駆け抜け後の通常時に出るCZは<b>8G固定</b>（オポジットバトル／ファーストリコリス）。10Gのリコイル オブ リコリスは連チャン中にしか出ないため対象外</li>
@@ -471,7 +490,7 @@
       <li>連チャン後のスルー判定：0スルーなら、いちばん新しい信号（AT中のボーナス）からの「現在」に通常時が丸ごと入るので<b>現在 ≧ サブ液晶</b>になる。よって<b>サブ液晶が現在より大きければ1スルー以上</b>で確定。そうでなければ決められない</li>
       <li>「数字を確認」が出たら、信号の数かサブ液晶の読みを見直す。とくに<b>ATで使ったG数</b>が27Gを大きく超えているのに駆け抜け判定なら、STがレア役で伸びたか、どこかを読み違えている</li>
     </ul>
-  </section>
+  </details>
 
 </div>
 
@@ -489,8 +508,9 @@
   var clearBtn  = document.getElementById("clear");
 
   // 値は文字列で持つ。空欄と0を区別して「まだ入力されていない」を判定するため。
-  // 初期値は解説ページの例。現在20G / CZ/B 196・43・56 / RB、サブ液晶250G。
-  var state = { now: "20", signals: ["196", "43", "56"], lcd: "250" };
+  // 初期値は空。ホールで開いた直後にそのまま打ち込めるよう、前の数字を消す手間をなくす。
+  // 全欄が空のあいだは「入力待ち」と案内文が出る（recompute の blank 分岐）。
+  var state = { now: "", signals: ["", "", ""], lcd: "" };
 
   function toNum(s) {
     var n = parseInt(s, 10);
