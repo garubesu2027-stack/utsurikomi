@@ -258,6 +258,23 @@
     padding-top: 9px; border-top: 1px solid var(--line);
   }
 
+  /* 判定パネルと、その直下の注記。守備範囲の外は畳まず常に出す */
+  .verdict-block { display: flex; flex-direction: column; gap: 9px; }
+  .scope-note {
+    display: flex; flex-direction: column; gap: 3px;
+    padding-inline-start: 2px;
+  }
+  .scope-note p {
+    margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted);
+    text-indent: -1em; padding-inline-start: 1em;
+  }
+
+  /* ---------- 最下部の但し書き ---------- */
+  .disclaimer {
+    margin: 0; font-size: 11.5px; line-height: 1.7; color: var(--muted);
+    border-top: 1px solid var(--line); padding-top: 14px;
+  }
+
   /* ---------- 境界の帯 ---------- */
   .bands { display: flex; flex-direction: column; gap: 9px; }
   .bar {
@@ -447,14 +464,20 @@
     </div>
   </section>
 
-  <section class="verdict miss" id="verdict">
-    <div class="verdict-top">
-      <h3 id="v-title">—</h3>
-      <span class="atbadge" id="v-at">—</span>
+  <div class="verdict-block">
+    <section class="verdict miss" id="verdict">
+      <div class="verdict-top">
+        <h3 id="v-title">—</h3>
+        <span class="atbadge" id="v-at">—</span>
+      </div>
+      <p id="v-body">—</p>
+      <p class="todo" id="v-todo" hidden>—</p>
+    </section>
+    <div class="scope-note">
+      <p>※ 上位CZ・上位ST後の履歴には対応していません</p>
+      <p>※ すべてのデータカウンターには対応していません</p>
     </div>
-    <p id="v-body">—</p>
-    <p class="todo" id="v-todo" hidden>—</p>
-  </section>
+  </div>
 
   <section class="sec bands">
     <div class="sec-hd">
@@ -494,8 +517,12 @@
       <li>駆け抜け後はCZ間の天井も250Gに短縮されるが、<b>CZに1回当たると消える</b>。そのため駆け抜け判定には<b>RB後の信号の数＝CZスルー回数</b>を添える（駆け抜け後の信号はすべてAT後のCZ）</li>
       <li>連チャン後のスルー判定：0スルーなら、いちばん新しい信号（AT中のボーナス）からの「現在」に通常時が丸ごと入るので<b>現在 ≧ サブ液晶</b>になる。よって<b>サブ液晶が現在より大きければ1スルー以上</b>で確定。そうでなければ決められない</li>
       <li>「数字を確認」が出たら、信号の数かサブ液晶の読みを見直す。とくに<b>ATで使ったG数</b>が27Gを大きく超えているのに駆け抜け判定なら、STがレア役で伸びたか、どこかを読み違えている</li>
+      <li><b>上位CZ・上位ST後の履歴は対象外</b>。消化するゲーム数も、そのあとの短縮のされ方も通常と違うため、この式では判定できない</li>
+      <li><b>データカウンターはメーカーによって表示が違う</b>。「現在」の数え方や信号の出方がここでの前提と違うカウンターでは、正しく判定できない</li>
     </ul>
   </details>
+
+  <p class="disclaimer">この判定は履歴からの推測です。実機の仕様や読み取りのズレで外れることがあります。打つかどうかはご自身の判断でお願いします。</p>
 
 </div>
 
