@@ -136,8 +136,9 @@
     text-wrap: balance; line-height: 1.28;
   }
   .lede { margin: 0; font-size: 14px; color: var(--muted); max-width: 44em; }
-  .credit { align-self: flex-start; font-size: 12px; color: var(--muted); text-decoration: none; }
-  .credit:hover { text-decoration: underline; }
+  .credit { margin: 0; font-size: 12px; color: var(--muted); }
+  .credit a { color: var(--accent); font-weight: 700; text-decoration: none; }
+  .credit a:hover { text-decoration: underline; }
 
   /* ---------- セクション見出し ---------- */
   .sec { display: flex; flex-direction: column; gap: 11px; }
@@ -428,7 +429,7 @@
     <div class="eyebrow">スマスロ リコリス・リコイル</div>
     <h1>駆け抜け判定機</h1>
     <p class="lede">データカウンターの履歴とサブ液晶のゲーム数から、前回のリコリスラッシュが駆け抜けだったかを判定します。駆け抜けていれば短縮状態です。</p>
-    <a class="credit" href="https://hetakuso-super.com/">by かめとうさぎのパチスロブログ</a>
+    <p class="credit">by <a href="https://hetakuso-super.com/">かめとうさぎのパチスロブログ</a></p>
   </header>
 
   <section class="sec">
