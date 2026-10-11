@@ -190,7 +190,7 @@
   }
   .slot .n { font-size: 12px; opacity: .7; }
   .slot.t0 { background: var(--panel-2); color: var(--ink-2); }
-  .slot.next { border: 2px dashed var(--head); color: var(--head); }
+  .slot.next { background: #e3f1e5; border: 2px solid #3f9a4e; color: #2f7d3b; }
   .slot.empty { border: 2px dashed var(--line); color: var(--muted); }
   .icon-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .icon-btn {
@@ -576,7 +576,7 @@
         return `<button type="button" class="slot t${t}${sel ? " sel" : ""}" data-k="${k}" aria-pressed="${sel}" aria-label="${k + 1}回目（${ic.label}）を変更">`
           + `<span class="n">${k + 1}回目</span>${ic.short}${last ? `<span class="del" aria-hidden="true">×</span>` : ""}</button>`;
       }
-      if (k === state.fails) return `<div class="slot next"><span class="n">${k + 1}回目</span>次</div>`;
+      if (k === state.fails) return `<div class="slot next"><span class="n">${k + 1}回目</span>次は<br>ここ</div>`;
       return `<div class="slot empty"><span class="n">${k + 1}回目</span></div>`;
     }).join("");
     document.querySelectorAll("#icons .icon-btn").forEach(b => b.disabled = state.sel === null && state.fails >= MAX_FAILS);
@@ -688,7 +688,7 @@
   for (const o of ICONS) {
     const b = document.createElement("button");
     b.type = "button"; b.className = `icon-btn t${o.t}`;
-    b.innerHTML = `<span>${o.label}</span><small>${o.t ? "T" + o.t : "−"}</small>`;
+    b.innerHTML = `<span>${o.label}</span>`;
     b.addEventListener("click", () => {
       if (state.sel !== null) { state.hist[state.sel] = o.t; state.sel = null; render(); return; }   // 選んだマスだけ入れ替え
       if (state.fails < MAX_FAILS) { state.hist.push(o.t); state.serif = ""; render(); }   // セリフは次の1回のCZのことなので、1回進んだら「なし」に戻す
