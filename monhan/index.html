@@ -294,6 +294,7 @@
   .action { margin: 0; padding: 9px 12px; border-radius: 10px; background: #e6f0fc; color: #1258b3; font-size: 16px; line-height: 1.45; }
   .action b { font-weight: 900; }
   .action small { display: block; font-size: 13px; font-weight: 700; margin-top: 1px; }
+  .action .blog-link { display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 900; color: #1663c4; text-decoration: underline; text-underline-offset: 2px; }
   .action.plain { background: var(--panel-2); color: var(--ink-2); font-weight: 700; font-size: 15px; }
   .badge.main { background: #6d28d9; color: #fff; font-size: 19px; font-weight: 900; padding: 9px 12px; border-radius: 10px; }
 
@@ -645,9 +646,11 @@
     else if (allHiAhead) action = { t: "▶ ATまで続行候補", sub: "残りのCZはすべてHI以上" };
     else if (state.fails >= 5) action = { t: "▶ ATまで続行候補", sub: "遅くとも7回目のCZでAT" };
     else if (rest.every(r => r[0] === "HI")) action = { t: "▶ 次のCZまで続行候補", sub: "外れたら通常の狙い目で判断" };
+    // どの結果でも、下に記事へのリンク（別タブで開くので入力は消えない）
+    const blogLink = `<a class="blog-link" href="https://hetakuso-super.com/slot-lmonster-hunter-sunbreak-2/" target="_blank" rel="noopener">📖 狙い目・やめどきを記事で見る →</a>`;
     const actionHtml = action
-      ? `<p class="action"><b>${action.t}</b><small>（${action.sub}）</small></p>`
-      : `<p class="action plain">通常の狙い目で判断<small>（AT間550G付近が目安）</small></p>`;
+      ? `<p class="action"><b>${action.t}</b><small>（${action.sub}）</small>${blogLink}</p>`
+      : `<p class="action plain">通常の狙い目で判断<small>（AT間550G付近が目安）</small>${blogLink}</p>`;
 
     res.innerHTML = `
       <div class="badges">${badges.sort((a, b) => (b.main ? 1 : 0) - (a.main ? 1 : 0)).map(b => `<p class="badge${b.main ? " main" : ""}">${b.main ? "🎯 " : ""}${b.t}</p>`).join("")}</div>
