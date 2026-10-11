@@ -35,6 +35,9 @@
     --lv-sp:    #d81717;
     --tint-hot: #fff1e6;
     --shadow:   0 1px 2px rgba(18,26,38,.07), 0 8px 22px rgba(18,26,38,.07);
+    --head:     #3f9a4e;
+    --t1: #9cc7f0; --t2: #f0e07e; --t3: #8ab4e8;
+    --t4: #b3dba0; --t5: #de7a74; --t6: #ab92ea;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -151,6 +154,45 @@
     background: var(--panel-2); border: 1.5px solid var(--line); border-radius: 10px;
     padding: 8px 10px; min-height: 44px; min-width: 0; width: 100%;
   }
+  /* 履歴入力 */
+  .card.input { padding: 0; gap: 0; overflow: hidden; }
+  .card-head { background: var(--head); color: #fff; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 10px; padding: 12px 16px; }
+  .card-head b { font-size: 19px; font-weight: 900; }
+  .card-head span { font-size: 12px; font-weight: 700; }
+  .card-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .slots { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+  .slot {
+    min-height: 74px; border-radius: 9px; padding: 4px 2px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; font-size: 11px; font-weight: 900; line-height: 1.25;
+    color: #1d232b; overflow-wrap: anywhere; border: 2px solid transparent;
+  }
+  .slot .n { font-size: 12px; opacity: .7; }
+  .slot.t0 { background: var(--panel-2); color: var(--ink-2); }
+  .slot.next { border: 2px dashed var(--head); color: var(--head); }
+  .slot.empty { border: 2px dashed var(--line); color: var(--muted); }
+  .icon-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .icon-btn {
+    font: inherit; font-size: clamp(13px, 3.7vw, 16px); font-weight: 900; color: #1d232b; letter-spacing: -.03em;
+    display: flex; justify-content: space-between; align-items: center; gap: 4px;
+    min-height: 54px; min-width: 0; padding: 10px 10px 10px 12px; text-align: left;
+    border-radius: 12px; border: 2px solid rgba(0,0,0,.14); cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .icon-btn small { font-size: 11px; opacity: .6; flex: none; }
+  .icon-btn.t0 { background: transparent; border: 2px dashed var(--line); color: var(--ink); }
+  .icon-btn:active { transform: scale(.97); }
+  .icon-btn:disabled { opacity: .35; cursor: default; transform: none; }
+  .t1 { background: var(--t1); } .t2 { background: var(--t2); } .t3 { background: var(--t3); }
+  .t4 { background: var(--t4); } .t5 { background: var(--t5); } .t6 { background: var(--t6); }
+  .ctrl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ctrl button {
+    font: inherit; font-size: 16px; font-weight: 900; min-height: 50px; border-radius: 12px;
+    background: var(--panel); color: var(--ink); border: 1.5px solid var(--line); cursor: pointer;
+  }
+  .ctrl button.danger { color: var(--danger); }
+  .ctrl button:disabled { opacity: .4; cursor: default; }
+
   .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: 0; border: 1px solid rgba(0,0,0,.25); }
 
   /* 結果 */
@@ -199,22 +241,17 @@
     <p class="lede">AT後のCZ失敗回数とアイキャッチ・チッチェのセリフから、次のブレイクゾーンの成功期待度を計算します。</p>
   </header>
 
-  <section class="card">
-    <p class="q">① AT後、CZ（ブレイクゾーン）に何回失敗した？</p>
-    <div class="counts" id="counts"></div>
-    <p class="hint">メニュー画面のスルー回数で確認できます</p>
-    <div class="icon-rows" id="iconRows"></div>
-  </section>
-
-  <section class="card">
-    <p class="q">② アイキャッチに出たキャラ（色）</p>
-    <div class="chips" id="eyes"></div>
-    <p class="hint">複数見たときは一番上の色を選んでください</p>
-  </section>
-
-  <section class="card">
-    <p class="q">③ チッチェのセリフ（次回CZの示唆）</p>
-    <div class="chips" id="serifs"></div>
+  <section class="card input">
+    <div class="card-head"><b>履歴入力</b><span>AT終了後（設定変更後）からの回数</span></div>
+    <div class="card-body">
+      <div class="slots" id="slots"></div>
+      <div class="icon-grid" id="icons"></div>
+      <div class="ctrl">
+        <button type="button" id="undo">1つ戻す</button>
+        <button type="button" id="clearHist" class="danger">リセット</button>
+      </div>
+      <p class="hint">失敗したCZの「1個目のアイコン」を古い順にタップ。分からない回は「不明・未確認」でOK（メニュー画面で確認できます）</p>
+    </div>
   </section>
 
   <section class="card result" id="result" aria-live="polite"></section>
@@ -224,20 +261,31 @@
   <section class="card" id="scen"></section>
 
   <section class="card">
+    <p class="q">アイキャッチに出たキャラ（色）</p>
+    <div class="chips" id="eyes"></div>
+    <p class="hint">複数見たときは一番上の色を選んでください</p>
+  </section>
+
+  <section class="card">
+    <p class="q">チッチェのセリフ（次回CZの示唆）</p>
+    <div class="chips" id="serifs"></div>
+  </section>
+
+  <section class="card">
     <details>
       <summary>計算の前提</summary>
       <ul>
         <li>AT終了時・設定変更時に「BZシナリオ」（A〜I）が決まり、AT間の何回目のCZがどのレベル（LOW・MID・HI・SP）になるかはシナリオごとに決まっています。</li>
         <li>レベルごとの成功期待度は、アイコンテーブルの選択率とテーブル別の成功期待度から計算しています（LOW 約22%・MID 約39%・HI 約52%・SP 成功濃厚）。</li>
         <li>失敗したCZの数だけ、そのシナリオだった可能性を計算し直しています（失敗が続くほど冷遇シナリオが残りやすくなります）。</li>
-        <li>失敗したCZの1個目のアイコンを入れると、「そのレベルでそのテーブルが選ばれる確率」も計算に入れます（例：1回目がQUEST（青）＝テーブル1はLOWでしか選ばれないので、シナリオHに絞れます）。</li>
+        <li>失敗したCZの1個目のアイコンを入れると、「そのレベルでそのテーブルが選ばれる確率」も計算に入れます（例：1回目がクエスト（青）＝テーブル1はLOWでしか選ばれないので、シナリオHに絞れます）。</li>
         <li>アイキャッチは「〇以上」の絞り込みにだけ使っています（キャラの出現率は不明のため）。セリフの「期待度UP（弱・強）」は数値が無いので計算には入れていません。</li>
         <li>数値はすべて設定1の値です。「AT間のCZ回数」にアイルー福引を数えるかは、解析で明らかになっていません。</li>
         <li>打つ・やめるの判断は、狙い目の期待値と合わせてご判断ください。</li>
       </ul>
     </details>
     <p class="credit">解析の出典：<a href="https://p.hisshobon.jp/machine/4830/1/46" target="_blank" rel="noopener">パチ＆スロ必勝本</a>（BZシナリオ・アイコンテーブル）／<a href="https://chonborista.com/slot/enta-slot/264514/" target="_blank" rel="noopener">ちょんぼりすた</a>（アイキャッチ・セリフ）</p>
-    <button class="reset" id="reset" type="button">入力をリセット</button>
+    <button class="reset" id="reset" type="button">入力をすべてリセット</button>
   </section>
 
 </div>
@@ -292,16 +340,22 @@
   // 失敗したCZの1個目のアイコン＝アイコンテーブル（1個目はテーブルごとに全部違う）。
   // テーブル7（1個目がAT）は成功濃厚なので、失敗したCZの選択肢には出さない
   const ICONS = [
-    { t: 0, label: "未確認" },
-    { t: 1, label: "QUEST（青）", sub: "テーブル1" },
-    { t: 2, label: "QUEST（黄）", sub: "テーブル2" },
-    { t: 3, label: "ライゼクス", sub: "テーブル3" },
-    { t: 4, label: "セルレギオス", sub: "テーブル4" },
-    { t: 5, label: "オロミドロ亜種", sub: "テーブル5" },
-    { t: 6, label: "テオ・テスカトル", sub: "テーブル6" },
+    { t: 1, label: "クエスト(青)", short: "クエスト(青)" },
+    { t: 2, label: "クエスト(黄)", short: "クエスト(黄)" },
+    { t: 3, label: "ライゼクス", short: "ライゼクス" },
+    { t: 4, label: "セルレギオス", short: "セルレギオス" },
+    { t: 5, label: "オロミドロ亜種", short: "オロミドロ亜種" },
+    { t: 6, label: "テオ・テスカトル", short: "テオ" },
+    { t: 0, label: "不明・未確認", short: "不明" },
   ];
+  const MAX_FAILS = 6;   // 7回目はどのシナリオでもSP
 
-  const state = { fails: 0, eye: "", serif: "", tables: [0, 0, 0, 0, 0, 0] };
+  // hist＝失敗したCZの1個目のアイコン（テーブル番号・0は不明）を古い順に
+  const state = {
+    hist: [], eye: "", serif: "",
+    get fails() { return this.hist.length; },
+    get tables() { return this.hist; },
+  };
 
   // ---- 計算 ----
   // fails 回失敗したあとの各シナリオの重み（次＝fails+1回目のCZ）
@@ -353,8 +407,19 @@
 
   // ---- 描画 ----
   function render() {
+    // 履歴のマス
+    document.getElementById("slots").innerHTML = Array.from({ length: 7 }, (_, k) => {
+      if (k < state.fails) {
+        const t = state.hist[k], ic = ICONS.find(o => o.t === t);
+        return `<div class="slot t${t}"><span class="n">${k + 1}回目</span>${ic.short}</div>`;
+      }
+      if (k === state.fails) return `<div class="slot next"><span class="n">${k + 1}回目</span>次</div>`;
+      return `<div class="slot empty"><span class="n">${k + 1}回目</span></div>`;
+    }).join("");
+    document.querySelectorAll("#icons button").forEach(b => b.disabled = state.fails >= MAX_FAILS);
+    document.getElementById("undo").disabled = state.fails === 0;
+
     // ボタンの状態
-    document.querySelectorAll("#counts button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.v === state.fails)));
     document.querySelectorAll("#eyes button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === state.eye)));
     document.querySelectorAll("#serifs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === state.serif)));
 
@@ -422,14 +487,18 @@
   }
 
   // ---- 入力 ----
-  const counts = document.getElementById("counts");
-  for (let i = 0; i <= 6; i++) {
+  const icons = document.getElementById("icons");
+  for (const o of ICONS) {
     const b = document.createElement("button");
-    b.type = "button"; b.className = "opt"; b.dataset.v = i;
-    b.textContent = String(i);
-    b.addEventListener("click", () => { state.fails = i; buildIconRows(); render(); });
-    counts.appendChild(b);
+    b.type = "button"; b.className = `icon-btn t${o.t}`;
+    b.innerHTML = `<span>${o.label}</span><small>${o.t ? "T" + o.t : "−"}</small>`;
+    b.addEventListener("click", () => {
+      if (state.fails < MAX_FAILS) { state.hist.push(o.t); render(); }
+    });
+    icons.appendChild(b);
   }
+  document.getElementById("undo").addEventListener("click", () => { state.hist.pop(); render(); });
+  document.getElementById("clearHist").addEventListener("click", () => { state.hist = []; render(); });
   const eyes = document.getElementById("eyes");
   for (const e of EYES) {
     const b = document.createElement("button");
@@ -446,27 +515,9 @@
     b.addEventListener("click", () => { state.serif = s.key; render(); });
     serifs.appendChild(b);
   }
-  // 失敗した回数ぶん「n回目の1個目のアイコン」の欄を出す（入力済みの値は残す）
-  function buildIconRows() {
-    const box = document.getElementById("iconRows");
-    for (let k = state.fails; k < 6; k++) state.tables[k] = 0;
-    if (state.fails === 0) { box.innerHTML = ""; return; }
-    box.innerHTML = `<p class="q2">失敗したCZの「1個目のアイコン」（分かる回だけ）</p>`
-      + Array.from({ length: state.fails }, (_, k) => `
-        <label class="icon-row"><span>${k + 1}回目</span>
-          <select data-k="${k}">${ICONS.map(o =>
-            `<option value="${o.t}" ${state.tables[k] === o.t ? "selected" : ""}>${o.label}${o.sub ? "（" + o.sub + "）" : ""}</option>`).join("")}
-          </select></label>`).join("")
-      + `<p class="hint">1個目のアイコンでテーブルが分かります（テーブルが高いほど早くATアイコンが出ます）</p>`;
-    box.querySelectorAll("select").forEach(sel => sel.addEventListener("change", () => {
-      state.tables[+sel.dataset.k] = +sel.value; render();
-    }));
-  }
-  buildIconRows();
-
   document.getElementById("reset").addEventListener("click", () => {
-    state.fails = 0; state.eye = ""; state.serif = ""; state.tables = [0, 0, 0, 0, 0, 0];
-    buildIconRows(); render();
+    state.hist = []; state.eye = ""; state.serif = "";
+    render();
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
