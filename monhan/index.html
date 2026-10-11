@@ -624,10 +624,8 @@
     else if (ids === "F,G") badges.push({ t: "シナリオF or G濃厚", main: true });
     if (!sure) {
       const allHi = rest.every(r => r.every(l => l === "HI" || l === "SP")) && rest.some(r => r.includes("HI"));
-      if (allHi) badges.push({ t: "この先のCZはすべてHI以上" });
-      else if (rest.every(r => r[0] === "HI")) badges.push({ t: `次回（${nth}回目）HI濃厚`, main: true });
-      const lastAt = Math.max(...alive.map(s => s.lv.length));
-      if (lastAt < 7 || lastAt - state.fails <= 2) badges.push({ t: `遅くとも${lastAt}回目のCZでAT当選濃厚` });
+      // 補足（すべてHI以上・遅くとも◯回目）は下の立ち回りのひとことに書くので、バッジは結論だけ
+      if (!allHi && rest.every(r => r[0] === "HI")) badges.push({ t: `次回（${nth}回目）HI濃厚`, main: true });
     }
 
     // 判別結果から立ち回りのひとこと（かめちゃんの判断・2026-10-11）
@@ -636,7 +634,7 @@
     let action = null;
     if (sure) action = { t: "▶ 次のCZまで続行候補", sub: "AT濃厚" };
     else if (lastAt < 7) action = { t: "▶ ATまで続行候補", sub: `遅くとも${lastAt}回目のCZでAT` };
-    else if (allHiAhead) action = { t: "▶ ATまで続行候補", sub: `残りのCZはすべてHI＝1回あたり約${pct(LV_SUCC.HI, 0)}%` };
+    else if (allHiAhead) action = { t: "▶ ATまで続行候補", sub: "残りのCZはすべてHI以上" };
     else if (state.fails >= 5) action = { t: "▶ ATまで続行候補", sub: "遅くとも7回目のCZでAT" };
     else if (rest.every(r => r[0] === "HI")) action = { t: "▶ 次のCZまで続行候補", sub: "外れたら通常の狙い目で判断" };
     const actionHtml = action
