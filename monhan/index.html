@@ -638,7 +638,7 @@
   slots.addEventListener("keydown", e => {
     if ((e.key === "Enter" || e.key === " ") && e.target.closest(".slot.last")) { e.preventDefault(); state.hist.pop(); render(); }
   });
-  document.getElementById("clearHist").addEventListener("click", () => { state.hist = []; render(); });
+  document.getElementById("clearHist").addEventListener("click", () => { state.hist = []; state.eye = ""; state.serif = ""; render(); });   // 次の台で前の台の示唆が残らないように全部消す
   const eyes = document.getElementById("eyes");
   for (const e of EYES) {
     const b = document.createElement("button");
