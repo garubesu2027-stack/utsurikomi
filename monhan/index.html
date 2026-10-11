@@ -82,6 +82,8 @@
 
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
+  /* 同じボタンを続けてタップしたときに画面が拡大されないように（ピンチ拡大はできる） */
+  button, select, summary, .slot { touch-action: manipulation; }
   body {
     margin: 0;
     background: var(--ground);
@@ -480,7 +482,7 @@
       if (k === state.fails) return `<div class="slot next"><span class="n">${k + 1}回目</span>次</div>`;
       return `<div class="slot empty"><span class="n">${k + 1}回目</span></div>`;
     }).join("");
-    document.querySelectorAll("#icons button").forEach(b => b.disabled = state.fails >= MAX_FAILS);
+    document.querySelectorAll("#icons .icon-btn").forEach(b => b.disabled = state.fails >= MAX_FAILS);
 
     // ボタンの状態
     document.querySelectorAll("#eyes button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === state.eye)));
