@@ -185,7 +185,13 @@
   .icon-btn:disabled { opacity: .35; cursor: default; transform: none; }
   .t1 { background: var(--t1); } .t2 { background: var(--t2); } .t3 { background: var(--t3); }
   .t4 { background: var(--t4); } .t5 { background: var(--t5); } .t6 { background: var(--t6); }
-  .ctrl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .slot.last { cursor: pointer; position: relative; }
+  .slot.last::after {
+    content: "×"; position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;
+    border-radius: 50%; background: var(--ink); color: var(--panel);
+    font-size: 12px; line-height: 18px; text-align: center;
+  }
+  .ctrl { display: grid; grid-template-columns: 1fr; gap: 8px; }
   .ctrl button {
     font: inherit; font-size: 16px; font-weight: 900; min-height: 50px; border-radius: 12px;
     background: var(--panel); color: var(--ink); border: 1.5px solid var(--line); cursor: pointer;
@@ -223,6 +229,20 @@
   .sc-row .pct { text-align: right; font-variant-numeric: tabular-nums; }
   .sc-row.out { opacity: .35; }
 
+  .guide summary { font-size: 15px; font-weight: 900; color: var(--ink); list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .guide summary::-webkit-details-marker { display: none; }
+  .guide summary::after { content: "＋"; color: var(--accent); font-size: 18px; }
+  .guide[open] summary::after { content: "－"; }
+  .guide-body { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+  .guide-body img { display: block; width: 100%; height: auto; border-radius: 8px; }
+  .guide-body ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .guide-body li { font-size: 14px; font-weight: 700; color: var(--ink); padding-left: 1em; text-indent: -1em; }
+  .guide-body li::before { content: "▶"; color: var(--accent); font-size: 11px; margin-right: 4px; }
+  .guide-body li small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); text-indent: 0; }
+  .badges { display: flex; flex-direction: column; gap: 6px; }
+  .badges:empty { display: none; }
+  .badge { margin: 0; background: var(--tint-hot); color: var(--accent); border-radius: 8px; padding: 6px 10px; font-size: 14px; font-weight: 900; }
+
   details { font-size: 13px; color: var(--ink-2); }
   summary { cursor: pointer; font-weight: 700; color: var(--ink); }
   details ul { margin: 8px 0 0; padding-left: 1.2em; }
@@ -241,16 +261,31 @@
     <p class="lede">AT後のCZ失敗回数とアイキャッチ・チッチェのセリフから、次のブレイクゾーンの成功期待度を計算します。</p>
   </header>
 
+  <section class="card">
+    <details class="guide">
+      <summary>ツールを使う前にまず確認！</summary>
+      <div class="guide-body">
+        <a href="cz-scenario.jpg" target="_blank" rel="noopener"><img src="cz-scenario.jpg" width="1672" height="941" alt="CZシナリオA〜Iの一覧表とシナリオ判別のまとめ" loading="lazy"></a>
+        <p class="hint">画像をタップすると大きく表示できます</p>
+        <ul>
+          <li>1回目のCZが青クエスト：シナリオH濃厚<small>（3回目のCZでAT当選）</small></li>
+          <li>2〜3回目の両方がセルレギオス以上：シナリオF or G<small>（今後はすべてHIテーブル）</small></li>
+          <li>3回目が青・黄クエスト：次回HI濃厚</li>
+          <li>CZを5回以上スルーしている：ATまで打てる<small>（遅くとも7回目のCZでAT当選）</small></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
   <section class="card input">
     <div class="card-head"><b>履歴入力</b><span>AT終了後（設定変更後）からの回数</span></div>
     <div class="card-body">
       <div class="slots" id="slots"></div>
       <div class="icon-grid" id="icons"></div>
       <div class="ctrl">
-        <button type="button" id="undo">1つ戻す</button>
         <button type="button" id="clearHist" class="danger">リセット</button>
       </div>
-      <p class="hint">失敗したCZの「1個目のアイコン」を古い順にタップ。分からない回は「不明・未確認」でOK（メニュー画面で確認できます）</p>
+      <p class="hint">失敗したCZの「1個目のアイコン」を古い順にタップ（メニュー画面で確認できます）。間違えたら、最後のマスをタップで1つ消せます</p>
     </div>
   </section>
 
@@ -280,7 +315,7 @@
         <li>失敗したCZの数だけ、そのシナリオだった可能性を計算し直しています（失敗が続くほど冷遇シナリオが残りやすくなります）。</li>
         <li>失敗したCZの1個目のアイコンを入れると、「そのレベルでそのテーブルが選ばれる確率」も計算に入れます（例：1回目がクエスト（青）＝テーブル1はLOWでしか選ばれないので、シナリオHに絞れます）。</li>
         <li>アイキャッチは「〇以上」の絞り込みにだけ使っています（キャラの出現率は不明のため）。セリフの「期待度UP（弱・強）」は数値が無いので計算には入れていません。</li>
-        <li>数値はすべて設定1の値です。「AT間のCZ回数」にアイルー福引を数えるかは、解析で明らかになっていません。</li>
+        <li>数値はすべて設定1の値です。アイルー福引は「テーブルが分からない失敗CZ」として1回に数えています（AT間のCZ回数に入るかは解析で明らかになっていません）。</li>
         <li>打つ・やめるの判断は、狙い目の期待値と合わせてご判断ください。</li>
       </ul>
     </details>
@@ -346,11 +381,11 @@
     { t: 4, label: "セルレギオス", short: "セルレギオス" },
     { t: 5, label: "オロミドロ亜種", short: "オロミドロ亜種" },
     { t: 6, label: "テオ・テスカトル", short: "テオ" },
-    { t: 0, label: "不明・未確認", short: "不明" },
+    { t: 0, label: "アイルー福引", short: "アイルー福引" },
   ];
   const MAX_FAILS = 6;   // 7回目はどのシナリオでもSP
 
-  // hist＝失敗したCZの1個目のアイコン（テーブル番号・0は不明）を古い順に
+  // hist＝失敗したCZの1個目のアイコン（テーブル番号・0はアイルー福引＝テーブル不明）を古い順に
   const state = {
     hist: [], eye: "", serif: "",
     get fails() { return this.hist.length; },
@@ -411,13 +446,13 @@
     document.getElementById("slots").innerHTML = Array.from({ length: 7 }, (_, k) => {
       if (k < state.fails) {
         const t = state.hist[k], ic = ICONS.find(o => o.t === t);
-        return `<div class="slot t${t}"><span class="n">${k + 1}回目</span>${ic.short}</div>`;
+        const last = k === state.fails - 1;
+        return `<div class="slot t${t}${last ? " last" : ""}"${last ? ` role="button" tabindex="0" aria-label="${k + 1}回目を消す"` : ""}><span class="n">${k + 1}回目</span>${ic.short}</div>`;
       }
       if (k === state.fails) return `<div class="slot next"><span class="n">${k + 1}回目</span>次</div>`;
       return `<div class="slot empty"><span class="n">${k + 1}回目</span></div>`;
     }).join("");
     document.querySelectorAll("#icons button").forEach(b => b.disabled = state.fails >= MAX_FAILS);
-    document.getElementById("undo").disabled = state.fails === 0;
 
     // ボタンの状態
     document.querySelectorAll("#eyes button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === state.eye)));
@@ -453,7 +488,23 @@
     }
     if (nth === 7) extra += `<p class="note">7回目のCZはどのシナリオでもSP（テーブル7）です。</p>`;
 
+    // 判別できたことを言葉で出す（シナリオの残り方から機械的に決める）
+    const alive = post.list.filter(o => o.p > 0.0005).map(o => SCEN.find(s => s.id === o.id));
+    const ids = alive.map(s => s.id).join(",");
+    const rest = alive.map(s => s.lv.slice(state.fails));
+    const badges = [];
+    if (alive.length === 1) badges.push(`シナリオ${ids}濃厚`);
+    else if (ids === "F,G") badges.push("シナリオF or G濃厚");
+    if (!sure) {
+      const allHi = rest.every(r => r.every(l => l === "HI" || l === "SP")) && rest.some(r => r.includes("HI"));
+      if (allHi) badges.push("この先のCZはすべてHI以上");
+      else if (rest.every(r => r[0] === "HI")) badges.push(`次回（${nth}回目）HI濃厚`);
+      const lastAt = Math.max(...alive.map(s => s.lv.length));
+      if (lastAt < 7 || lastAt - state.fails <= 2) badges.push(`遅くとも${lastAt}回目のCZでAT当選濃厚`);
+    }
+
     res.innerHTML = `
+      <div class="badges">${badges.map(b => `<p class="badge">🎯 ${b}</p>`).join("")}</div>
       <p class="big-label">次のCZ（AT間${nth}回目）の成功期待度</p>
       ${sure ? `<p class="big sure">成功濃厚</p>` : `<p class="big">${pct(r0.succ)}<span class="unit">%</span></p>`}
       <div class="levels" aria-hidden="true">${bar}</div>
@@ -497,7 +548,12 @@
     });
     icons.appendChild(b);
   }
-  document.getElementById("undo").addEventListener("click", () => { state.hist.pop(); render(); });
+  // 最後のマスをタップすると1つ消す
+  const slots = document.getElementById("slots");
+  slots.addEventListener("click", e => { if (e.target.closest(".slot.last")) { state.hist.pop(); render(); } });
+  slots.addEventListener("keydown", e => {
+    if ((e.key === "Enter" || e.key === " ") && e.target.closest(".slot.last")) { e.preventDefault(); state.hist.pop(); render(); }
+  });
   document.getElementById("clearHist").addEventListener("click", () => { state.hist = []; render(); });
   const eyes = document.getElementById("eyes");
   for (const e of EYES) {
