@@ -265,7 +265,8 @@
   .guide-body li small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); text-indent: 0; }
   .badges { display: flex; flex-direction: column; gap: 6px; }
   .badges:empty { display: none; }
-  .badge { margin: 0; background: var(--tint-hot); color: var(--accent); border-radius: 8px; padding: 6px 10px; font-size: 14px; font-weight: 900; }
+  .badge { margin: 0; background: var(--tint-hot); color: var(--accent); border-radius: 8px; padding: 5px 10px; font-size: 13px; font-weight: 700; }
+  .badge.main { background: var(--accent); color: #fff; font-size: 19px; font-weight: 900; padding: 9px 12px; border-radius: 10px; }
 
   details { font-size: 13px; color: var(--ink-2); }
   summary { cursor: pointer; font-weight: 700; color: var(--ink); }
@@ -520,18 +521,19 @@
     const ids = alive.map(s => s.id).join(",");
     const rest = alive.map(s => s.lv.slice(state.fails));
     const badges = [];
-    if (alive.length === 1) badges.push(`シナリオ${ids}濃厚`);
-    else if (ids === "F,G") badges.push("シナリオF or G濃厚");
+    // main＝結論（濃い色で大きく）／それ以外＝補足（薄い色）
+    if (alive.length === 1) badges.push({ t: `シナリオ${ids}濃厚`, main: true });
+    else if (ids === "F,G") badges.push({ t: "シナリオF or G濃厚", main: true });
     if (!sure) {
       const allHi = rest.every(r => r.every(l => l === "HI" || l === "SP")) && rest.some(r => r.includes("HI"));
-      if (allHi) badges.push("この先のCZはすべてHI以上");
-      else if (rest.every(r => r[0] === "HI")) badges.push(`次回（${nth}回目）HI濃厚`);
+      if (allHi) badges.push({ t: "この先のCZはすべてHI以上" });
+      else if (rest.every(r => r[0] === "HI")) badges.push({ t: `次回（${nth}回目）HI濃厚`, main: true });
       const lastAt = Math.max(...alive.map(s => s.lv.length));
-      if (lastAt < 7 || lastAt - state.fails <= 2) badges.push(`遅くとも${lastAt}回目のCZでAT当選濃厚`);
+      if (lastAt < 7 || lastAt - state.fails <= 2) badges.push({ t: `遅くとも${lastAt}回目のCZでAT当選濃厚` });
     }
 
     res.innerHTML = `
-      <div class="badges">${badges.map(b => `<p class="badge">🎯 ${b}</p>`).join("")}</div>
+      <div class="badges">${badges.sort((a, b) => (b.main ? 1 : 0) - (a.main ? 1 : 0)).map(b => `<p class="badge${b.main ? " main" : ""}">${b.main ? "🎯 " : ""}${b.t}</p>`).join("")}</div>
       <p class="big-label">次のCZ（AT間${nth}回目）の成功期待度</p>
       ${sure ? `<p class="big sure">成功濃厚</p>` : `<p class="big">${pct(r0.succ)}<span class="unit">%</span></p>`}
       <div class="levels" aria-hidden="true">${bar}</div>
@@ -551,7 +553,7 @@
               <td class="num">${pct(r.hitHere)}%</td></tr>`).join("")}
         </tbody>
       </table>
-      <p class="hint">「その回で当たる確率」＝そこまで失敗して、その回で成功する確率。CZでのAT当選まで平均あと約${expCz.toFixed(1)}回（7回目で成功濃厚）</p>`;
+      <p class="hint">「その回で当たる確率」＝そこまで失敗して、その回で成功する確率。CZでのAT当選まで平均あと約${expCz.toFixed(1)}回（遅くとも${Math.max(...alive.map(s => s.lv.length))}回目で成功濃厚）</p>`;
 
     // シナリオ
     scen.innerHTML = `
