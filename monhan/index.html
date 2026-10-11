@@ -286,6 +286,10 @@
   .badges { display: flex; flex-direction: column; gap: 6px; }
   .badges:empty { display: none; }
   .badge { margin: 0; background: var(--tint-hot); color: var(--accent); border-radius: 8px; padding: 5px 10px; font-size: 13px; font-weight: 700; }
+  .action { margin: 0; padding: 9px 12px; border-radius: 10px; background: #e6f0fc; color: #1258b3; font-size: 16px; line-height: 1.45; }
+  .action b { font-weight: 900; }
+  .action small { display: block; font-size: 13px; font-weight: 700; margin-top: 1px; }
+  .action.plain { background: var(--panel-2); color: var(--ink-2); font-weight: 700; font-size: 15px; }
   .badge.main { background: #6d28d9; color: #fff; font-size: 19px; font-weight: 900; padding: 9px 12px; border-radius: 10px; }
 
   details { font-size: 13px; color: var(--ink-2); }
@@ -626,8 +630,22 @@
       if (lastAt < 7 || lastAt - state.fails <= 2) badges.push({ t: `遅くとも${lastAt}回目のCZでAT当選濃厚` });
     }
 
+    // 判別結果から立ち回りのひとこと（かめちゃんの判断・2026-10-11）
+    const lastAt = Math.max(...alive.map(s => s.lv.length));
+    const allHiAhead = rest.every(r => r.every(l => l === "HI" || l === "SP")) && rest.some(r => r.includes("HI"));
+    let action = null;
+    if (sure) action = { t: "▶ 次のCZまで続行候補", sub: "AT濃厚" };
+    else if (lastAt < 7) action = { t: "▶ ATまで続行候補", sub: `遅くとも${lastAt}回目のCZでAT` };
+    else if (allHiAhead) action = { t: "▶ ATまで続行候補", sub: `残りのCZはすべてHI＝1回あたり約${pct(LV_SUCC.HI, 0)}%` };
+    else if (state.fails >= 5) action = { t: "▶ ATまで続行候補", sub: "遅くとも7回目のCZでAT" };
+    else if (rest.every(r => r[0] === "HI")) action = { t: "▶ 次のCZまで続行候補", sub: "外れたら通常の狙い目で判断" };
+    const actionHtml = action
+      ? `<p class="action"><b>${action.t}</b><small>（${action.sub}）</small></p>`
+      : `<p class="action plain">通常の狙い目で判断<small>（AT間550G付近が目安）</small></p>`;
+
     res.innerHTML = `
       <div class="badges">${badges.sort((a, b) => (b.main ? 1 : 0) - (a.main ? 1 : 0)).map(b => `<p class="badge${b.main ? " main" : ""}">${b.main ? "🎯 " : ""}${b.t}</p>`).join("")}</div>
+      ${actionHtml}
       <p class="big-label">次のCZ（AT間${nth}回目）の成功期待度</p>
       ${sure ? `<p class="big sure">成功濃厚</p>` : `<p class="big">${pct(r0.succ)}<span class="unit">%</span></p>`}
       <div class="levels" aria-hidden="true">${bar}</div>
@@ -639,15 +657,14 @@
     ahead.innerHTML = `
       <p class="q">この先のCZ</p>
       <table>
-        <thead><tr><th>AT間</th><th class="num">その回の<br>成功期待度</th><th class="num">その回で<br>当たる確率</th></tr></thead>
+        <thead><tr><th>AT間</th><th class="num">その回の成功期待度</th></tr></thead>
         <tbody>
           ${rows.map((r, i) => `<tr class="${i === 0 ? "now" : ""} ${r.succ >= 0.45 ? "hot" : ""}">
               <td>${r.n}回目</td>
-              <td class="num">${r.succ > 0.9995 ? "成功濃厚" : pct(r.succ) + "%"}</td>
-              <td class="num">${pct(r.hitHere)}%</td></tr>`).join("")}
+              <td class="num">${r.succ > 0.9995 ? "成功濃厚" : pct(r.succ) + "%"}</td></tr>`).join("")}
         </tbody>
       </table>
-      <p class="hint">「その回で当たる確率」＝そこまで失敗して、その回で成功する確率。CZでのAT当選まで平均あと約${expCz.toFixed(1)}回（遅くとも${Math.max(...alive.map(s => s.lv.length))}回目で成功濃厚）</p>`;
+      <p class="hint">CZでのAT当選まで平均あと約${expCz.toFixed(1)}回（遅くとも${Math.max(...alive.map(s => s.lv.length))}回目で成功濃厚）</p>`;
 
     // シナリオ
     scen.innerHTML = `
