@@ -295,6 +295,15 @@
   .credit { font-size: 12px; color: var(--muted); margin: 0; }
   .credit a { color: var(--accent-2); font-weight: 700; }
   .reset { align-self: flex-start; font: inherit; font-size: 13px; color: var(--muted); background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 4px 0; }
+
+  .sug summary { list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    padding: 12px 14px; font-size: 14px; font-weight: 900; color: var(--accent-2); cursor: pointer; }
+  .sug summary::-webkit-details-marker { display: none; }
+  .sug summary::after { content: "▼"; font-size: 12px; color: var(--muted); }
+  .sug[open] summary::after { content: "▲"; }
+  .sug.on summary { background: #e8f5ea; color: #2f7d3b; }
+  .sug-body { display: flex; flex-direction: column; gap: 10px; padding: 4px 14px 14px; }
+  .sug.in-card { border: 1.5px solid var(--line); border-radius: 12px; overflow: hidden; }
 </style>
 </head>
 <body>
@@ -329,6 +338,17 @@
       <div class="slots" id="slots"></div>
       <p class="sel-hint" id="selHint"></p>
       <div class="icon-grid" id="icons"><button type="button" id="clearHist" class="reset-btn">リセット</button></div>
+      <details class="sug in-card" id="sug">
+      <summary><span id="sugHead">＋ アイキャッチ・セリフを追加</span></summary>
+      <div class="sug-body">
+        <p class="q">アイキャッチに出たキャラ（色）</p>
+        <div class="chips" id="eyes"></div>
+        <p class="hint">複数見たときは一番上の色を選んでください</p>
+        <p class="q">チッチェのセリフ（次回CZの示唆）</p>
+        <div class="chips" id="serifs"></div>
+        <p class="hint">※「期待度UP（弱・強）」のセリフは具体的な振り分けが不明なため、計算対象から除外しています。</p>
+      </div>
+    </details>
       <p class="hint">失敗したCZの「1個目のアイコン」を古い順にタップ（メニュー画面で確認できます）。入れ間違えたマスはタップ→正しいアイコンで入れ替え、最後のマスは×で消せます</p>
     </div>
   </section>
@@ -339,16 +359,6 @@
 
   <section class="card" id="ahead"></section>
 
-  <section class="card">
-    <p class="q">アイキャッチに出たキャラ（色）</p>
-    <div class="chips" id="eyes"></div>
-    <p class="hint">複数見たときは一番上の色を選んでください</p>
-  </section>
-
-  <section class="card">
-    <p class="q">チッチェのセリフ（次回CZの示唆）</p>
-    <div class="chips" id="serifs"></div>
-  </section>
 
   <a class="readmore" href="https://hetakuso-super.com/slot-lmonster-hunter-sunbreak-2/">
     <img class="ricon" src="blog-icon.png" alt="" width="46" height="46">
@@ -367,7 +377,7 @@
         <li>レベルごとの成功期待度は、アイコンテーブルの選択率とテーブル別の成功期待度から計算しています（LOW 約22%・MID 約39%・HI 約52%・SP 成功濃厚）。</li>
         <li>失敗したCZの数だけ、そのシナリオだった可能性を計算し直しています（失敗が続くほど冷遇シナリオが残りやすくなります）。</li>
         <li>失敗したCZの1個目のアイコンを入れると、「そのレベルでそのテーブルが選ばれる確率」も計算に入れます（例：1回目がクエスト（青）＝テーブル1はLOWでしか選ばれないので、シナリオHに絞れます）。</li>
-        <li>アイキャッチは「〇以上」の絞り込みにだけ使っています（キャラの出現率は不明のため）。セリフの「期待度UP（弱・強）」は数値が無いので計算には入れていません。</li>
+        <li>アイキャッチは「〇以上」の絞り込みにだけ使っています（キャラの出現率は不明のため）。セリフは「HI以上濃厚」「SP濃厚」だけを使い、「期待度UP（弱・強）」は具体的な振り分けが不明なため選択肢から外しています。</li>
         <li>数値はすべて設定1の値です。アイルー福引は通常のブレイクゾーンと抽選方式が違うため、その回は「BZテーブル不明」として失敗確率をかけず、前後のCZのアイコンだけでシナリオを計算しています。アイルー福引でシナリオの回数が1回進むかは未確認のため、1回進む前提の暫定計算です。</li>
         <li>打つ・やめるの判断は、狙い目の期待値と合わせてご判断ください。</li>
       </ul>
@@ -425,8 +435,6 @@
   ];
   const SERIFS = [
     { key: "",     label: "なし" },
-    { key: "weak", label: "どちらのクエストへ…（HI以上 期待度UP弱）" },
-    { key: "str",  label: "おすすめしたいクエストが…（HI以上 期待度UP強）" },
     { key: "hi",   label: "重要なクエストが…（HI以上濃厚）" },
     { key: "sp",   label: "先ほど珍しい依頼が…（SP濃厚）" },
   ];
@@ -537,6 +545,14 @@
     document.querySelectorAll("#eyes button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === state.eye)));
     document.querySelectorAll("#serifs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === state.serif)));
 
+    // 折りたたみの見出し：閉じていても反映中の示唆が分かるように
+    const sugParts = [];
+    if (state.eye) sugParts.push(EYES.find(e => e.key === state.eye).label.replace(/（.*）/, ""));
+    if (state.serif === "hi") sugParts.push("HI以上濃厚");
+    if (state.serif === "sp") sugParts.push("SP濃厚");
+    document.getElementById("sugHead").textContent = sugParts.length ? `✓ 反映中：${sugParts.join("・")}` : "＋ アイキャッチ・セリフを追加";
+    document.getElementById("sug").classList.toggle("on", sugParts.length > 0);
+
     const post = posterior(state.fails, state.eye, state.serif);
     const res = document.getElementById("result");
     const ahead = document.getElementById("ahead");
@@ -562,9 +578,6 @@
     const legend = mix.map(m => `<span><i style="background:${LV_COLOR[m.lv]}"></i>${m.lv} ${pct(m.p)}%</span>`).join("");
 
     let extra = "";
-    if (state.serif === "weak" || state.serif === "str") {
-      extra = `<p class="note">※セリフの「HI以上 期待度UP」は数値が出ていないので、上の数字には入れていません。実際はこれより高めです。</p>`;
-    }
     if (nth === 7) extra += `<p class="note">7回目のCZはどのシナリオでもSP（テーブル7）です。</p>`;
     if (state.hist.includes(0)) extra += `<p class="note">※アイルー福引でシナリオの回数が1回進む前提の<b>暫定の計算</b>です（未確認）。アイルー福引の回はシナリオの絞り込みに使っていません。</p>`;
 
