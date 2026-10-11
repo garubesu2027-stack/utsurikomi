@@ -292,7 +292,9 @@
   .badges:empty { display: none; }
   .badge { margin: 0; background: var(--tint-hot); color: var(--accent); border-radius: 8px; padding: 5px 10px; font-size: 13px; font-weight: 700; }
   .action { margin: 0; padding: 9px 12px; border-radius: 10px; background: #e6f0fc; color: #1258b3; font-size: 16px; line-height: 1.45; }
-  .action b { font-weight: 900; }
+  .action b { font-weight: 900; color: #1f7a33; }
+  .action:not(.plain) { background: #e6f4e8; }
+  .action:not(.plain) small { color: #2f6b3a; }
   .action small { display: block; font-size: 13px; font-weight: 700; margin-top: 1px; }
   .action .blog-link { display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 900; color: #1663c4; text-decoration: underline; text-underline-offset: 2px; }
   .action.plain { background: var(--panel-2); color: var(--ink-2); font-weight: 700; font-size: 15px; }
