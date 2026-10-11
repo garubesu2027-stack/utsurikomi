@@ -202,12 +202,15 @@
   .icon-btn:disabled { opacity: .35; cursor: default; transform: none; }
   .t1 { background: var(--t1); } .t2 { background: var(--t2); } .t3 { background: var(--t3); }
   .t4 { background: var(--t4); } .t5 { background: var(--t5); } .t6 { background: var(--t6); }
-  .slot.last { cursor: pointer; position: relative; }
-  .slot.last::after {
-    content: "×"; position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;
+  button.slot { font-family: inherit; cursor: pointer; position: relative; -webkit-tap-highlight-color: transparent; }
+  .slot.sel { outline: 3px solid var(--ink); outline-offset: 2px; }
+  .slot .del {
+    position: absolute; top: -9px; right: -9px; width: 24px; height: 24px;
     border-radius: 50%; background: var(--ink); color: var(--panel);
-    font-size: 12px; line-height: 18px; text-align: center;
+    font-size: 15px; font-weight: 900; line-height: 24px; text-align: center;
   }
+  .sel-hint { margin: 0; font-size: 14px; font-weight: 900; color: var(--ink); background: var(--panel-2); border-radius: 8px; padding: 6px 10px; }
+  .sel-hint:empty { display: none; }
   .ctrl { display: grid; grid-template-columns: 1fr; gap: 8px; }
   .ctrl button {
     font: inherit; font-size: 16px; font-weight: 900; min-height: 50px; border-radius: 12px;
@@ -324,8 +327,9 @@
     <div class="card-head"><b>履歴入力</b><span>AT終了後（設定変更後）からの回数</span></div>
     <div class="card-body">
       <div class="slots" id="slots"></div>
+      <p class="sel-hint" id="selHint"></p>
       <div class="icon-grid" id="icons"><button type="button" id="clearHist" class="reset-btn">リセット</button></div>
-      <p class="hint">失敗したCZの「1個目のアイコン」を古い順にタップ（メニュー画面で確認できます）。間違えたら、最後のマスをタップで1つ消せます</p>
+      <p class="hint">失敗したCZの「1個目のアイコン」を古い順にタップ（メニュー画面で確認できます）。入れ間違えたマスはタップ→正しいアイコンで入れ替え、最後のマスは×で消せます</p>
     </div>
   </section>
 
@@ -443,6 +447,7 @@
   // hist＝失敗したCZの1個目のアイコン（テーブル番号・0はアイルー福引＝テーブル不明）を古い順に
   const state = {
     hist: [], eye: "", serif: "",
+    sel: null,   // 入れ替えのために選んでいるマス（保存しない）
     get fails() { return this.hist.length; },
     get tables() { return this.hist; },
   };
@@ -518,13 +523,15 @@
     document.getElementById("slots").innerHTML = Array.from({ length: 7 }, (_, k) => {
       if (k < state.fails) {
         const t = state.hist[k], ic = ICONS.find(o => o.t === t);
-        const last = k === state.fails - 1;
-        return `<div class="slot t${t}${last ? " last" : ""}"${last ? ` role="button" tabindex="0" aria-label="${k + 1}回目を消す"` : ""}><span class="n">${k + 1}回目</span>${ic.short}</div>`;
+        const last = k === state.fails - 1, sel = k === state.sel;
+        return `<button type="button" class="slot t${t}${sel ? " sel" : ""}" data-k="${k}" aria-pressed="${sel}" aria-label="${k + 1}回目（${ic.label}）を変更">`
+          + `<span class="n">${k + 1}回目</span>${ic.short}${last ? `<span class="del" aria-hidden="true">×</span>` : ""}</button>`;
       }
       if (k === state.fails) return `<div class="slot next"><span class="n">${k + 1}回目</span>次</div>`;
       return `<div class="slot empty"><span class="n">${k + 1}回目</span></div>`;
     }).join("");
-    document.querySelectorAll("#icons .icon-btn").forEach(b => b.disabled = state.fails >= MAX_FAILS);
+    document.querySelectorAll("#icons .icon-btn").forEach(b => b.disabled = state.sel === null && state.fails >= MAX_FAILS);
+    document.getElementById("selHint").textContent = state.sel === null ? "" : `${state.sel + 1}回目を変更中：正しいアイコンをタップ`;
 
     // ボタンの状態
     document.querySelectorAll("#eyes button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === state.eye)));
@@ -618,7 +625,8 @@
     b.type = "button"; b.className = `icon-btn t${o.t}`;
     b.innerHTML = `<span>${o.label}</span><small>${o.t ? "T" + o.t : "−"}</small>`;
     b.addEventListener("click", () => {
-      if (state.fails < MAX_FAILS) { state.hist.push(o.t); render(); }
+      if (state.sel !== null) { state.hist[state.sel] = o.t; state.sel = null; render(); return; }   // 選んだマスだけ入れ替え
+      if (state.fails < MAX_FAILS) { state.hist.push(o.t); state.serif = ""; render(); }   // セリフは次の1回のCZのことなので、1回進んだら「なし」に戻す
     });
     icons.appendChild(b);
   }
@@ -632,13 +640,16 @@
   document.getElementById("zoomClose").addEventListener("click", closeZoom);
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeZoom(); });
 
-  // 最後のマスをタップすると1つ消す
-  const slots = document.getElementById("slots");
-  slots.addEventListener("click", e => { if (e.target.closest(".slot.last")) { state.hist.pop(); render(); } });
-  slots.addEventListener("keydown", e => {
-    if ((e.key === "Enter" || e.key === " ") && e.target.closest(".slot.last")) { e.preventDefault(); state.hist.pop(); render(); }
+  // 入力済みのマス：タップで選ぶ（もう一度で解除）・最後のマスの×で1つ消す
+  document.getElementById("slots").addEventListener("click", e => {
+    if (e.target.closest(".del")) { state.hist.pop(); state.sel = null; render(); return; }
+    const b = e.target.closest("button.slot");
+    if (!b) return;
+    const k = +b.dataset.k;
+    state.sel = state.sel === k ? null : k;
+    render();
   });
-  document.getElementById("clearHist").addEventListener("click", () => { state.hist = []; state.eye = ""; state.serif = ""; render(); });   // 次の台で前の台の示唆が残らないように全部消す
+  document.getElementById("clearHist").addEventListener("click", () => { state.hist = []; state.eye = ""; state.serif = ""; state.sel = null; render(); });   // 次の台で前の台の示唆が残らないように全部消す
   const eyes = document.getElementById("eyes");
   for (const e of EYES) {
     const b = document.createElement("button");
@@ -656,7 +667,7 @@
     serifs.appendChild(b);
   }
   document.getElementById("reset").addEventListener("click", () => {
-    state.hist = []; state.eye = ""; state.serif = "";
+    state.hist = []; state.eye = ""; state.serif = ""; state.sel = null;
     render();
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
