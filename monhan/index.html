@@ -13,8 +13,7 @@
      スマスロ モンスターハンターライズ：サンブレイク CZ判別機
      AT間のCZ失敗回数・アイキャッチのキャラ・チッチェのセリフから、
      BZシナリオの残り方と次のブレイクゾーンの成功期待度を出す。
-     数値の出典：パチ＆スロ必勝本（BZシナリオ・アイコンテーブル）、
-     ちょんぼりすた（アイキャッチ・セリフの示唆）。設定1の値。
+     数値の出典：ちょんぼりすた（BZシナリオ・アイコンテーブル・アイキャッチ・セリフ）。設定1の値。
      ============================================================ */
 
   :root {
@@ -108,6 +107,8 @@
   h1 { margin: 0; font-size: 26px; font-weight: 900; line-height: 1.28; text-wrap: balance; }
   .lede { margin: 0; font-size: 14px; color: var(--muted); }
   .byline { margin: 0; font-size: 12px; }
+  .setting-note { margin: 0; font-size: 12px; font-weight: 700; color: var(--ink-2); }
+  .disclaimer { margin: 0; font-size: 11.5px; line-height: 1.7; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; }
   .byline a { color: var(--accent-2); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 
   /* ブログ記事へのリンク（リコリス判定機と同じ形） */
@@ -335,6 +336,7 @@
     <div class="eyebrow">スマスロ モンハンサンブレイク</div>
     <h1>CZ（ブレイクゾーン）判別機</h1>
     <p class="lede">AT後のCZ失敗回数とアイキャッチ・チッチェのセリフから、次のブレイクゾーンの成功期待度を計算します。</p>
+    <p class="setting-note">※数値はすべて設定1の解析値です</p>
     <p class="byline"><a href="https://hetakuso-super.com/">by かめとうさぎのパチスロブログ</a></p>
   </header>
 
@@ -415,9 +417,11 @@
         <li>打つ・やめるの判断は、狙い目の期待値と合わせてご判断ください。</li>
       </ul>
     </details>
-    <p class="credit">解析の出典：<a href="https://p.hisshobon.jp/machine/4830/1/46" target="_blank" rel="noopener">パチ＆スロ必勝本</a>（BZシナリオ・アイコンテーブル）／<a href="https://chonborista.com/slot/enta-slot/264514/" target="_blank" rel="noopener">ちょんぼりすた</a>（アイキャッチ・セリフ）</p>
+    <p class="credit">解析の出典：<a href="https://chonborista.com/slot/enta-slot/264514/" target="_blank" rel="noopener">ちょんぼりすた</a>（BZシナリオ・アイコンテーブル・アイキャッチ・セリフ）</p>
     <button class="reset" id="reset" type="button">入力をすべてリセット</button>
   </section>
+
+  <p class="disclaimer">数値はすべて設定1の解析値で、判別結果は解析値からの推測です。実機の挙動や入力のズレで結果と異なることがあります。打つ・やめるはご自身の判断でお願いします。このツールを使って生じた損失について、当ブログでは補償できませんのでご了承ください。</p>
 
 </div>
 
