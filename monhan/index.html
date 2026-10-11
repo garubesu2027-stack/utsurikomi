@@ -107,6 +107,21 @@
   .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .14em; color: var(--accent); }
   h1 { margin: 0; font-size: 26px; font-weight: 900; line-height: 1.28; text-wrap: balance; }
   .lede { margin: 0; font-size: 14px; color: var(--muted); }
+  .byline { margin: 0; font-size: 12px; }
+  .byline a { color: var(--accent-2); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+
+  /* ブログ記事へのリンク（リコリス判定機と同じ形） */
+  .readmore {
+    display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit;
+    background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent-2);
+    border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow);
+  }
+  .readmore .ricon { flex: none; width: 46px; height: 46px; border-radius: 12px; background: #fff; border: 1px solid var(--line); }
+  .readmore .rbody { min-width: 0; }
+  .readmore .lead { font-size: 12.5px; color: var(--muted); margin: 0 0 6px; }
+  .readmore .ttl { font-size: 15px; font-weight: 700; color: var(--accent-2); margin: 0 0 4px; display: flex; align-items: center; gap: 6px; }
+  .readmore .ttl::after { content: "→"; font-weight: 400; }
+  .readmore .site { font-size: 11.5px; color: var(--muted); margin: 0; }
 
   .card {
     background: var(--panel);
@@ -286,6 +301,7 @@
     <div class="eyebrow">スマスロ モンハンサンブレイク</div>
     <h1>CZ（ブレイクゾーン）判別機</h1>
     <p class="lede">AT後のCZ失敗回数とアイキャッチ・チッチェのセリフから、次のブレイクゾーンの成功期待度を計算します。</p>
+    <p class="byline"><a href="https://hetakuso-super.com/">by かめとうさぎのパチスロブログ</a></p>
   </header>
 
   <section class="card guide-card">
@@ -329,6 +345,15 @@
     <p class="q">チッチェのセリフ（次回CZの示唆）</p>
     <div class="chips" id="serifs"></div>
   </section>
+
+  <a class="readmore" href="https://hetakuso-super.com/slot-lmonster-hunter-sunbreak-2/">
+    <img class="ricon" src="blog-icon.png" alt="" width="46" height="46">
+    <div class="rbody">
+      <p class="lead">狙い目・やめどきの参考はこちら</p>
+      <p class="ttl"><span>Lモンハンサンブレイク｜<br>天井狙い・やめどき</span></p>
+      <p class="site">かめとうさぎのパチスロブログ</p>
+    </div>
+  </a>
 
   <section class="card">
     <details>
@@ -471,8 +496,24 @@
 
   const pct = (x, d = 1) => (x * 100).toFixed(d);
 
+  // ---- 入力の保存（ホールでアプリを切り替えても消えないように・使えない環境では何もしない） ----
+  const SAVE_KEY = "monhan-cz-v1";
+  function save() {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ hist: state.hist, eye: state.eye, serif: state.serif })); } catch (e) {}
+  }
+  function load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+      if (!d) return;
+      if (Array.isArray(d.hist)) state.hist = d.hist.filter(t => ICONS.some(o => o.t === t)).slice(0, MAX_FAILS);
+      if (EYES.some(e => e.key === d.eye)) state.eye = d.eye;
+      if (SERIFS.some(x => x.key === d.serif)) state.serif = d.serif;
+    } catch (e) {}
+  }
+
   // ---- 描画 ----
   function render() {
+    save();
     // 履歴のマス
     document.getElementById("slots").innerHTML = Array.from({ length: 7 }, (_, k) => {
       if (k < state.fails) {
@@ -620,6 +661,7 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
+  load();
   render();
 })();
 </script>
