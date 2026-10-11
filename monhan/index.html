@@ -303,9 +303,23 @@
   .sug[open] summary::after { content: "▲"; }
   .sug.on summary { background: #e8f5ea; color: #2f7d3b; }
   .sub-q {
-    margin: 6px 0 0; padding: 7px 10px; font-size: 15px; font-weight: 900; color: #fff;
-    background: var(--accent-2); border-radius: 6px;
+    margin: 6px 0 0; padding: 4px 0; font-size: 16px; font-weight: 900; color: #2f7d3b;
+    border-bottom: 3px solid #3f9a4e;
   }
+  .sub-q { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .sub-q span { white-space: nowrap; }
+  .sub-q small { font-size: 12px; margin-left: 2px; }
+  .mihon-btn {
+    flex: none; font: inherit; font-size: 11px; font-weight: 900; padding: 3px 9px; border-radius: 999px;
+    border: 1.5px solid currentColor; background: rgba(255,255,255,.18); color: inherit; cursor: pointer;
+  }
+  .mihon { display: flex; flex-direction: column; gap: 6px; }
+  .mihon[hidden] { display: none; }
+  .serif-table { font-size: 13px; table-layout: auto; }
+  .serif-table th { font-size: 11px; }
+  .serif-table td:last-child { white-space: nowrap; font-weight: 700; }
+  .serif-table td small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+  .serif-table tr.use td { font-weight: 900; }
   .sug-body { display: flex; flex-direction: column; gap: 10px; padding: 4px 14px 14px; }
   .sug.in-card { border: 1.5px solid var(--line); border-radius: 12px; overflow: hidden; }
 </style>
@@ -324,7 +338,7 @@
     <details class="guide">
       <summary>ツールを使う前にまず確認！</summary>
       <div class="guide-body">
-        <button type="button" class="zoom-open" id="zoomOpen" aria-label="画像を大きく表示"><img src="cz-scenario.jpg" width="1672" height="941" alt="CZシナリオA〜Iの一覧表とシナリオ判別のまとめ" loading="lazy"></button>
+        <button type="button" class="zoom-open" data-zoom="cz-scenario.jpg" aria-label="画像を大きく表示"><img src="cz-scenario.jpg" width="1672" height="941" alt="CZシナリオA〜Iの一覧表とシナリオ判別のまとめ" loading="lazy"></button>
         <p class="hint">画像をタップすると大きく表示できます</p>
         <ul>
           <li>1回目のCZが青クエスト：<em class="ans">シナリオH濃厚</em><small>（3回目のCZでAT当選）</small></li>
@@ -347,8 +361,19 @@
       <div class="sug-body">
         <p class="sub-q">アイキャッチに出たキャラ（色）</p>
         <div class="chips" id="eyes"></div>
-        <p class="hint">複数見たときは一番上の色を選んでください</p>
-        <p class="sub-q">チッチェのセリフ（次回CZの示唆）</p>
+        <p class="hint">アイキャッチで液晶右側に出たキャラ（周りの円陣の色でも判別できます）。複数見たときは一番上の色を選んでください</p>
+        <div class="sub-q"><span>チッチェのセリフ<small>（次回CZ）</small></span><button type="button" class="mihon-btn" data-for="mihonSerif" aria-expanded="false">全文 ▼</button></div>
+        <div class="mihon" id="mihonSerif" hidden>
+          <table class="serif-table">
+            <thead><tr><th>セリフ（「お待ちしておりました！」の後）</th><th>示唆</th></tr></thead>
+            <tbody>
+              <tr><td>どちらのクエストへ向かわれますか？</td><td>HI以上期待度UP（弱）<small>計算には入れない</small></td></tr>
+              <tr><td>おすすめしたいクエストがいくつかありますよ！</td><td>HI以上期待度UP（強）<small>計算には入れない</small></td></tr>
+              <tr class="use"><td>重要なクエストがありますよ！</td><td>HI以上濃厚</td></tr>
+              <tr class="use"><td>先ほど珍しい依頼が入ってきましたよ！</td><td>SP濃厚</td></tr>
+            </tbody>
+          </table>
+        </div>
         <div class="chips" id="serifs"></div>
         <p class="hint">※「期待度UP（弱・強）」のセリフは具体的な振り分けが不明なため、計算対象から除外しています。</p>
       </div>
@@ -393,7 +418,7 @@
 </div>
 
 <div class="zoom" id="zoom" role="dialog" aria-label="CZシナリオ一覧（拡大）">
-  <div class="zoom-scroll"><img src="cz-scenario.jpg" width="1672" height="941" alt="CZシナリオA〜Iの一覧表とシナリオ判別のまとめ（拡大）"></div>
+  <div class="zoom-scroll"><img id="zoomImg" src="" alt="拡大した画像"></div>
   <button type="button" class="zoom-close" id="zoomClose" aria-label="閉じる">×</button>
   <p class="zoom-tip">指で左右に動かせます・ピンチで拡大もできます</p>
 </div>
@@ -650,9 +675,17 @@
   icons.appendChild(document.getElementById("clearHist"));   // リセットはアイルー福引の横（最後）に
   // 画像の拡大表示（別ページに飛ばない）
   const zoom = document.getElementById("zoom");
-  document.getElementById("zoomOpen").addEventListener("click", () => {
+  document.querySelectorAll(".zoom-open").forEach(b => b.addEventListener("click", () => {
+    document.getElementById("zoomImg").src = b.dataset.zoom;
     zoom.classList.add("on"); document.body.classList.add("no-scroll");
-  });
+  }));
+  // 見本・全文の開け閉め
+  document.querySelectorAll(".mihon-btn").forEach(b => b.addEventListener("click", () => {
+    const box = document.getElementById(b.dataset.for), open = box.hidden;
+    box.hidden = !open;
+    b.setAttribute("aria-expanded", String(open));
+    b.textContent = b.textContent.replace(/[▼▲]/, open ? "▲" : "▼");
+  }));
   const closeZoom = () => { zoom.classList.remove("on"); document.body.classList.remove("no-scroll"); };
   document.getElementById("zoomClose").addEventListener("click", closeZoom);
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeZoom(); });
