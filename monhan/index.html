@@ -196,7 +196,10 @@
     font: inherit; font-size: 16px; font-weight: 900; min-height: 50px; border-radius: 12px;
     background: var(--panel); color: var(--ink); border: 1.5px solid var(--line); cursor: pointer;
   }
-  .ctrl button.danger { color: var(--danger); }
+  .reset-btn {
+    font: inherit; font-size: 16px; font-weight: 900; min-height: 54px; border-radius: 12px;
+    background: var(--panel); color: var(--danger); border: 1.5px solid var(--line); cursor: pointer;
+  }
   .ctrl button:disabled { opacity: .4; cursor: default; }
 
   .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: 0; border: 1px solid rgba(0,0,0,.25); }
@@ -257,6 +260,7 @@
   .guide-body ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
   .guide-body li { font-size: 14px; font-weight: 700; color: var(--ink); padding-left: 1em; text-indent: -1em; }
   .guide-body li::before { content: "▶"; color: var(--accent); font-size: 11px; margin-right: 4px; }
+  .guide-body li small.inline { display: inline; margin-left: 2px; }
   .guide-body li .ans { font-style: normal; font-weight: 900; color: var(--accent); }
   .guide-body li small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); text-indent: 0; }
   .badges { display: flex; flex-direction: column; gap: 6px; }
@@ -289,7 +293,7 @@
         <p class="hint">画像をタップすると大きく表示できます</p>
         <ul>
           <li>1回目のCZが青クエスト：<em class="ans">シナリオH濃厚</em><small>（3回目のCZでAT当選）</small></li>
-          <li>2〜3回目の両方がセルレギオス以上：<em class="ans">シナリオF or G</em><small>（今後はすべてHIテーブル）</small></li>
+          <li>2〜3回目の両方がセルレギオス以上：<em class="ans">シナリオF or G</em><small class="inline">（今後はすべてHIテーブル）</small></li>
           <li>3回目が青・黄クエスト：<em class="ans">次回HI濃厚</em></li>
           <li>CZを5回以上スルーしている：<em class="ans">ATまで打てる</em><small>（遅くとも7回目のCZでAT当選）</small></li>
         </ul>
@@ -301,10 +305,7 @@
     <div class="card-head"><b>履歴入力</b><span>AT終了後（設定変更後）からの回数</span></div>
     <div class="card-body">
       <div class="slots" id="slots"></div>
-      <div class="icon-grid" id="icons"></div>
-      <div class="ctrl">
-        <button type="button" id="clearHist" class="danger">リセット</button>
-      </div>
+      <div class="icon-grid" id="icons"><button type="button" id="clearHist" class="reset-btn">リセット</button></div>
       <p class="hint">失敗したCZの「1個目のアイコン」を古い順にタップ（メニュー画面で確認できます）。間違えたら、最後のマスをタップで1つ消せます</p>
     </div>
   </section>
@@ -574,6 +575,7 @@
     });
     icons.appendChild(b);
   }
+  icons.appendChild(document.getElementById("clearHist"));   // リセットはアイルー福引の横（最後）に
   // 画像の拡大表示（別ページに飛ばない）
   const zoom = document.getElementById("zoom");
   document.getElementById("zoomOpen").addEventListener("click", () => {
