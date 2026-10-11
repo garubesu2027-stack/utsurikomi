@@ -229,12 +229,31 @@
   .sc-row .pct { text-align: right; font-variant-numeric: tabular-nums; }
   .sc-row.out { opacity: .35; }
 
-  .guide summary { font-size: 15px; font-weight: 900; color: var(--ink); list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .card.guide-card { padding: 0; overflow: hidden; border: 2px solid var(--accent); }
+  .guide summary {
+    font-size: 16px; font-weight: 900; color: #fff; background: var(--accent);
+    list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    padding: 13px 16px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
   .guide summary::-webkit-details-marker { display: none; }
-  .guide summary::after { content: "＋"; color: var(--accent); font-size: 18px; }
+  .guide summary::after { content: "＋"; color: #fff; font-size: 20px; line-height: 1; }
   .guide[open] summary::after { content: "－"; }
-  .guide-body { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+  .guide-body { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
   .guide-body img { display: block; width: 100%; height: auto; border-radius: 8px; }
+  .zoom-open { display: block; padding: 0; border: 0; background: none; cursor: zoom-in; width: 100%; }
+
+  /* 画像の拡大表示（ページ内で開く） */
+  .zoom { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.92); display: none; }
+  .zoom.on { display: block; }
+  .zoom-scroll { position: absolute; inset: 0; overflow: auto; -webkit-overflow-scrolling: touch; display: flex; align-items: center; }
+  .zoom-scroll img { display: block; width: 1000px; max-width: none; height: auto; margin: auto; }
+  .zoom-close {
+    position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; z-index: 51;
+    width: 44px; height: 44px; border-radius: 50%; border: 0;
+    background: #fff; color: #111; font-size: 22px; font-weight: 900; cursor: pointer;
+  }
+  .zoom-tip { position: fixed; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); text-align: center; color: #ddd; font-size: 12px; pointer-events: none; }
+  body.no-scroll { overflow: hidden; }
   .guide-body ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
   .guide-body li { font-size: 14px; font-weight: 700; color: var(--ink); padding-left: 1em; text-indent: -1em; }
   .guide-body li::before { content: "▶"; color: var(--accent); font-size: 11px; margin-right: 4px; }
@@ -261,11 +280,11 @@
     <p class="lede">AT後のCZ失敗回数とアイキャッチ・チッチェのセリフから、次のブレイクゾーンの成功期待度を計算します。</p>
   </header>
 
-  <section class="card">
+  <section class="card guide-card">
     <details class="guide">
       <summary>ツールを使う前にまず確認！</summary>
       <div class="guide-body">
-        <a href="cz-scenario.jpg" target="_blank" rel="noopener"><img src="cz-scenario.jpg" width="1672" height="941" alt="CZシナリオA〜Iの一覧表とシナリオ判別のまとめ" loading="lazy"></a>
+        <button type="button" class="zoom-open" id="zoomOpen" aria-label="画像を大きく表示"><img src="cz-scenario.jpg" width="1672" height="941" alt="CZシナリオA〜Iの一覧表とシナリオ判別のまとめ" loading="lazy"></button>
         <p class="hint">画像をタップすると大きく表示できます</p>
         <ul>
           <li>1回目のCZが青クエスト：シナリオH濃厚<small>（3回目のCZでAT当選）</small></li>
@@ -323,6 +342,12 @@
     <button class="reset" id="reset" type="button">入力をすべてリセット</button>
   </section>
 
+</div>
+
+<div class="zoom" id="zoom" role="dialog" aria-label="CZシナリオ一覧（拡大）">
+  <div class="zoom-scroll"><img src="cz-scenario.jpg" width="1672" height="941" alt="CZシナリオA〜Iの一覧表とシナリオ判別のまとめ（拡大）"></div>
+  <button type="button" class="zoom-close" id="zoomClose" aria-label="閉じる">×</button>
+  <p class="zoom-tip">指で左右に動かせます・ピンチで拡大もできます</p>
 </div>
 
 <script>
@@ -548,6 +573,15 @@
     });
     icons.appendChild(b);
   }
+  // 画像の拡大表示（別ページに飛ばない）
+  const zoom = document.getElementById("zoom");
+  document.getElementById("zoomOpen").addEventListener("click", () => {
+    zoom.classList.add("on"); document.body.classList.add("no-scroll");
+  });
+  const closeZoom = () => { zoom.classList.remove("on"); document.body.classList.remove("no-scroll"); };
+  document.getElementById("zoomClose").addEventListener("click", closeZoom);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeZoom(); });
+
   // 最後のマスをタップすると1つ消す
   const slots = document.getElementById("slots");
   slots.addEventListener("click", e => { if (e.target.closest(".slot.last")) { state.hist.pop(); render(); } });
