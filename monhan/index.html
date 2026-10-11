@@ -36,7 +36,7 @@
     --tint-hot: #fff1e6;
     --shadow:   0 1px 2px rgba(18,26,38,.07), 0 8px 22px rgba(18,26,38,.07);
     --head:     #3f9a4e;
-    --t1: #9cc7f0; --t2: #f0e07e; --t3: #1f3f86;
+    --t1: #9cc7f0; --t2: #f0e07e; --t3: #6fd0bd;
     --t4: #b3dba0; --t5: #de7a74; --t6: #ab92ea;
   }
   @media (prefers-color-scheme: dark) {
@@ -185,7 +185,7 @@
   .icon-btn.t0 { background: transparent; border: 2px dashed var(--line); color: var(--ink); }
   .icon-btn:active { transform: scale(.97); }
   .icon-btn:disabled { opacity: .35; cursor: default; transform: none; }
-  .t1 { background: var(--t1); } .t2 { background: var(--t2); } .t3 { background: var(--t3); color: #fff; }
+  .t1 { background: var(--t1); } .t2 { background: var(--t2); } .t3 { background: var(--t3); }
   .t4 { background: var(--t4); } .t5 { background: var(--t5); } .t6 { background: var(--t6); }
   .slot.last { cursor: pointer; position: relative; }
   .slot.last::after {
@@ -339,7 +339,7 @@
         <li>失敗したCZの数だけ、そのシナリオだった可能性を計算し直しています（失敗が続くほど冷遇シナリオが残りやすくなります）。</li>
         <li>失敗したCZの1個目のアイコンを入れると、「そのレベルでそのテーブルが選ばれる確率」も計算に入れます（例：1回目がクエスト（青）＝テーブル1はLOWでしか選ばれないので、シナリオHに絞れます）。</li>
         <li>アイキャッチは「〇以上」の絞り込みにだけ使っています（キャラの出現率は不明のため）。セリフの「期待度UP（弱・強）」は数値が無いので計算には入れていません。</li>
-        <li>数値はすべて設定1の値です。アイルー福引は「テーブルが分からない失敗CZ」として1回に数えています（AT間のCZ回数に入るかは解析で明らかになっていません）。</li>
+        <li>数値はすべて設定1の値です。アイルー福引は通常のブレイクゾーンと抽選方式が違うため、その回は「BZテーブル不明」として失敗確率をかけず、前後のCZのアイコンだけでシナリオを計算しています。アイルー福引でシナリオの回数が1回進むかは未確認のため、1回進む前提の暫定計算です。</li>
         <li>打つ・やめるの判断は、狙い目の期待値と合わせてご判断ください。</li>
       </ul>
     </details>
@@ -433,8 +433,9 @@
       if (fails >= s.lv.length) w = 0;          // そこまでに当たっているはず
       for (let k = 0; k < fails && w > 0; k++) {
         const lv = s.lv[k], t = state.tables[k];
-        // テーブルが分かっている回は「そのレベルでそのテーブルが選ばれ、かつ失敗した」確率をかける
-        w *= t ? ((LV_TABLE[lv][t] || 0) / 100) * (1 - TABLE_SUCC[t]) : (1 - LV_SUCC[lv]);
+        // テーブルが分かっている回は「そのレベルでそのテーブルが選ばれ、かつ失敗した」確率をかける。
+        // アイルー福引（t=0）は通常のBZと抽選が違うので何もかけない（回数だけ1回進める・暫定）
+        if (t) w *= ((LV_TABLE[lv][t] || 0) / 100) * (1 - TABLE_SUCC[t]);
       }
       const next = s.lv[fails];
       if (w > 0 && serif === "hi" && !(next === "HI" || next === "SP")) w = 0;
@@ -517,6 +518,7 @@
       extra = `<p class="note">※セリフの「HI以上 期待度UP」は数値が出ていないので、上の数字には入れていません。実際はこれより高めです。</p>`;
     }
     if (nth === 7) extra += `<p class="note">7回目のCZはどのシナリオでもSP（テーブル7）です。</p>`;
+    if (state.hist.includes(0)) extra += `<p class="note">※アイルー福引でシナリオの回数が1回進む前提の<b>暫定の計算</b>です（未確認）。アイルー福引の回はシナリオの絞り込みに使っていません。</p>`;
 
     // 判別できたことを言葉で出す（シナリオの残り方から機械的に決める）
     const alive = post.list.filter(o => o.p > 0.0005).map(o => SCEN.find(s => s.id === o.id));
