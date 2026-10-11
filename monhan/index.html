@@ -302,6 +302,10 @@
   .sug summary::after { content: "▼"; font-size: 12px; color: var(--muted); }
   .sug[open] summary::after { content: "▲"; }
   .sug.on summary { background: #e8f5ea; color: #2f7d3b; }
+  .sub-q {
+    margin: 6px 0 0; padding: 7px 10px; font-size: 15px; font-weight: 900; color: var(--ink);
+    background: var(--panel-2); border-left: 5px solid var(--accent-2); border-radius: 6px;
+  }
   .sug-body { display: flex; flex-direction: column; gap: 10px; padding: 4px 14px 14px; }
   .sug.in-card { border: 1.5px solid var(--line); border-radius: 12px; overflow: hidden; }
 </style>
@@ -341,10 +345,10 @@
       <details class="sug in-card" id="sug">
       <summary><span id="sugHead">＋ アイキャッチ・セリフを追加</span></summary>
       <div class="sug-body">
-        <p class="q">アイキャッチに出たキャラ（色）</p>
+        <p class="sub-q">アイキャッチに出たキャラ（色）</p>
         <div class="chips" id="eyes"></div>
         <p class="hint">複数見たときは一番上の色を選んでください</p>
-        <p class="q">チッチェのセリフ（次回CZの示唆）</p>
+        <p class="sub-q">チッチェのセリフ（次回CZの示唆）</p>
         <div class="chips" id="serifs"></div>
         <p class="hint">※「期待度UP（弱・強）」のセリフは具体的な振り分けが不明なため、計算対象から除外しています。</p>
       </div>
