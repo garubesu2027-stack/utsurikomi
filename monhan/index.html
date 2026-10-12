@@ -150,6 +150,8 @@
   /* 回数の選択 */
   .counts { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .eye-list { flex-direction: column; flex-wrap: nowrap; }
+  .eye-list button.opt { width: 100%; }
   button.opt {
     font: inherit;
     font-size: 14px;
@@ -380,7 +382,7 @@
       <summary><span id="sugHead">＋ アイキャッチ・セリフを追加</span></summary>
       <div class="sug-body">
         <p class="sub-q">アイキャッチに出たキャラ（色）</p>
-        <div class="chips" id="eyes"></div>
+        <div class="chips eye-list" id="eyes"></div>
         <p class="hint">アイキャッチで液晶右側に出たキャラ（周りの円陣の色でも判別できます）。複数見たときは一番上の色を選んでください</p>
         <div class="sub-q"><span>チッチェのセリフ<small>（次回CZ）</small></span><button type="button" class="mihon-btn" data-for="mihonSerif" aria-expanded="false">全文 ▼</button></div>
         <div class="mihon" id="mihonSerif" hidden>
@@ -560,14 +562,15 @@
 
   const pct = (x, d = 1) => (x * 100).toFixed(d);
 
-  // ---- 入力の保存（ホールでアプリを切り替えても消えないように・使えない環境では何もしない） ----
+  // ---- 入力の保存（タブを閉じたら消える＝sessionStorage。再読み込みでは残る・使えない環境では何もしない） ----
+  try { localStorage.removeItem("monhan-cz-v1"); } catch (e) {}   // 前の版（閉じても残る保存）の残りを消す
   const SAVE_KEY = "monhan-cz-v1";
   function save() {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ hist: state.hist, eye: state.eye, serif: state.serif })); } catch (e) {}
+    try { sessionStorage.setItem(SAVE_KEY, JSON.stringify({ hist: state.hist, eye: state.eye, serif: state.serif })); } catch (e) {}
   }
   function load() {
     try {
-      const d = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+      const d = JSON.parse(sessionStorage.getItem(SAVE_KEY) || "null");
       if (!d) return;
       if (Array.isArray(d.hist)) state.hist = d.hist.filter(t => ICONS.some(o => o.t === t)).slice(0, MAX_FAILS);
       if (EYES.some(e => e.key === d.eye)) state.eye = d.eye;
