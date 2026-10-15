@@ -341,6 +341,27 @@ const Music = (() => {
       let t = ac.currentTime + 0.05;
       for (const [notes, d] of JINGLES[name]) { for (const n of notes) tone(freq(n), t, d + 0.25, 'square', 0.07); t += d; }
     },
+    // 効果音（BGMと同じ音量つまみ＝消音も共通）
+    sfx(name) {
+      if (!ac) return;
+      const t = ac.currentTime + 0.01;
+      const sweep = (f0, f1, t0, dur, type, vol) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.type = type; o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+        g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+        o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + dur + 0.02);
+      };
+      if (name === 'roll') { // ギュルンッ：低い音が回転しながら上がる＋風切り
+        for (let i = 0; i < 4; i++) sweep(180 + i * 60, 420 + i * 90, t + i * 0.045, 0.06, 'square', 0.12);
+        noise(t, 0.25, 0.22, 900);
+      } else if (name === 'rocket') { // ヒューン↑：一気に駆け上がる
+        sweep(160, 1400, t, 0.45, 'sawtooth', 0.12);
+        sweep(320, 2200, t + 0.03, 0.42, 'square', 0.06);
+        kick(t); noise(t, 0.3, 0.25, 400);
+      } else if (name === 'break') { // ガシャッ
+        noise(t, 0.18, 0.35, 300); sweep(220, 60, t, 0.12, 'square', 0.1);
+      }
+    },
     toggleMute() {
       muted = !muted; if (master) master.gain.value = muted ? 0 : 0.35;
       try { localStorage.setItem('kameusagi-mute', muted ? '1' : '0'); } catch (e) {}
@@ -508,11 +529,11 @@ function updatePlayer() {
     if (from === 'usagi' && Math.abs(p.vx) >= COMBO.rollMinSpeed) {
       // 🐰→🐢 甲羅アタック：ダッシュの勢いのまま甲羅で突進
       p.roll = COMBO.rollTime; p.vx = Math.sign(p.vx) * COMBO.rollSpeed; p.face = Math.sign(p.vx);
-      popup('甲羅アタック！', '#9fe3ff');
+      popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll');
     } else if (from === 'kame' && p.charge > 0) {
       // 🐢→🐰 ロケットジャンプ：ガードで受けた衝撃を使って大ジャンプ
       p.vy = -COMBO.rocketJump; p.rocket = true; p.charge = 0; p.roll = 0;
-      popup('ロケットジャンプ！', '#ffb347');
+      popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket');
       burst(p.x + 15, p.y + 30, '#ffb347', 24, 4);
     } else {
       p.roll = 0;
@@ -528,7 +549,7 @@ function updatePlayer() {
     p.roll--; p.shield = false;
     p.vx *= 0.99;
     eachTile({ x: p.x + p.vx, y: p.y, w: p.w, h: p.h }, (tx, ty) => {
-      if (tileAt(tx, ty) === 'X') { st.tiles[ty][tx] = ' '; burst(tx * T + 20, ty * T + 20, '#a9a9b3', 16, 4); st.flash = 5; }
+      if (tileAt(tx, ty) === 'X') { st.tiles[ty][tx] = ' '; burst(tx * T + 20, ty * T + 20, '#a9a9b3', 16, 4); st.flash = 5; Music.sfx('break'); }
     });
     if (Math.abs(p.vx) < N.speed) p.roll = 0;
     if (p.onGround && st.time % 3 === 0) burst(p.x + 15 - p.face * 14, p.y + 30, '#e8e2d0', 1, 1);
@@ -909,9 +930,14 @@ function drawWorld() {
   for (const e of st.enemies) {
     const x = e.x - cam;
     ctx.save(); ctx.translate(x + 15, e.y + 14); if (e.dead) ctx.scale(1, -1);
+    // トゲは左右だけ（横から当たると痛い）。上はツルッとしていて踏める
+    ctx.fillStyle = '#d8d8e4'; ctx.strokeStyle = '#5e3019'; ctx.lineWidth = 1.5;
+    for (const sd of [-1, 1]) for (const sy of [-5, 2, 9]) {
+      ctx.beginPath(); ctx.moveTo(sd * 11, sy - 4); ctx.lineTo(sd * 20, sy); ctx.lineTo(sd * 11, sy + 4); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
     ctx.fillStyle = '#8a4b2a'; ctx.beginPath(); ctx.ellipse(0, 2, 15, 12, 0, 0, 7); ctx.fill();
-    ctx.fillStyle = '#5e3019';
-    for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(i * 6 - 3, -6); ctx.lineTo(i * 6, -15); ctx.lineTo(i * 6 + 3, -6); ctx.fill(); }
+    ctx.fillStyle = '#b06a3e'; ctx.beginPath(); ctx.ellipse(0, -5, 10, 4.5, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.ellipse(-4, -6, 3.5, 1.6, -0.2, 0, 7); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-5, 0, 4, 0, 7); ctx.arc(5, 0, 4, 0, 7); ctx.fill();
     ctx.fillStyle = '#111'; const ex = e.vx > 0 ? 1.5 : -1.5;
     ctx.beginPath(); ctx.arc(-5 + ex, 1, 2, 0, 7); ctx.arc(5 + ex, 1, 2, 0, 7); ctx.fill();
