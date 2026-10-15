@@ -36,7 +36,8 @@
   /* 縦持ち：上にゲーム画面、下にボタン */
   @media (orientation:portrait){
     body.touch{flex-direction:column;justify-content:flex-start;padding-top:env(safe-area-inset-top);}
-    body.touch canvas{width:100vw;}
+    /* ゲーム画面（縦持ちは640×520＝高さは幅の81.25%）を、上の余白とボタン置き場の間の真ん中あたりに置く */
+    body.touch canvas{width:100vw;margin-top:max(8px, calc((100dvh - 81.25vw - 300px) / 2));}
     body.touch #pad{position:relative;width:100vw;flex:1;}
     #dpad{left:16px;bottom:calc(60px + env(safe-area-inset-bottom));}
     #dpad .btn{width:80px;height:80px;}
@@ -44,7 +45,7 @@
     #swap{width:72px;height:72px;right:124px;bottom:calc(36px + env(safe-area-inset-bottom));}
     #guard{width:72px;height:72px;right:110px;bottom:calc(126px + env(safe-area-inset-bottom));}
     #sys{top:14px;left:50%;transform:translateX(-50%);}
-    #rotate{display:block;}
+    #rotate{display:block;top:78px;transform:none;}
   }
   /* 横持ち：画面いっぱいにゲーム、ボタンは半透明で重ねる */
   @media (orientation:landscape){
@@ -78,7 +79,8 @@
 <script>
 'use strict';
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
-const W = 960, H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
+let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
+const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
 const FONT = '"Hiragino Maru Gothic ProN","Hiragino Sans","Yu Gothic",sans-serif';
 
 // ===================== キャラ設定（能力を足すときはここ） =====================
@@ -377,6 +379,14 @@ function setKey(code, down) {
   if (down) { if (!keys[code]) pressed[code] = true; keys[code] = true; Music.unlock(); }
   else keys[code] = false;
 }
+// 縦持ちのスマホは見える範囲を横16マスに絞って、そのぶん大きく映す
+function layoutView() {
+  const nw = TOUCH && innerHeight > innerWidth ? 640 : 960;
+  if (W !== nw) { W = nw; cv.width = W; if (st) st.cam = null; }
+}
+addEventListener('resize', layoutView); // 最初の1回はスクリプトの最後で呼ぶ（stの準備後）
+addEventListener('orientationchange', () => setTimeout(layoutView, 200));
+
 if (TOUCH) {
   document.body.classList.add('touch');
   const $ = id => document.getElementById(id);
@@ -751,8 +761,10 @@ function frame(now) {
 
 // ===================== 描画 =====================
 function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
-function txt(s, x, y, size, color, align = 'left', weight = 'bold') {
-  ctx.font = `${weight} ${size}px ${FONT}`; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(s, x, y);
+function txt(s, x, y, size, color, align = 'left', weight = 'bold', maxW = 0) {
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  if (maxW) while (size > 8 && ctx.measureText(s).width > maxW) { size -= 0.5; ctx.font = `${weight} ${size}px ${FONT}`; }
+  ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(s, x, y);
 }
 function outlined(s, x, y, size, color, stroke = '#2b2b3a', align = 'center') {
   ctx.font = `bold ${size}px ${FONT}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
@@ -877,7 +889,14 @@ function drawBackground(cam) {
 }
 
 function drawWorld() {
-  const cam = Math.max(0, Math.min(st.w * T - W, p.x - W * 0.4));
+  const clampCam = c => Math.max(0, Math.min(st.w * T - W, c));
+  let cam;
+  if (W < 960) {
+    const target = clampCam(p.x + 15 - W / 2 + p.face * W * 0.2);
+    if (st.cam == null || Math.abs(st.cam - target) > W) st.cam = target;
+    st.cam += (target - st.cam) * 0.08;
+    cam = Math.round(st.cam);
+  } else cam = clampCam(p.x - W * 0.4);
   drawBackground(cam);
 
   // ヒント看板
@@ -980,7 +999,8 @@ function fmt(f) { const s = f / 60; return `${Math.floor(s / 60)}:${(s % 60).toF
 
 function drawHUD() {
   // キャラカード
-  ctx.fillStyle = 'rgba(20,24,40,0.72)'; rr(12, 12, 430, 64, 12); ctx.fill();
+  const RW = W < 960 ? 196 : 250, LW = W < 960 ? W - 32 - RW : 430;
+  ctx.fillStyle = 'rgba(20,24,40,0.72)'; rr(12, 12, LW, 64, 12); ctx.fill();
   const on = p.char;
   ctx.fillStyle = on === 'kame' ? 'rgba(92,191,74,0.45)' : 'rgba(255,255,255,0.08)'; rr(20, 20, 48, 48, 10); ctx.fill();
   ctx.fillStyle = on === 'usagi' ? 'rgba(247,168,196,0.5)' : 'rgba(255,255,255,0.08)'; rr(74, 20, 48, 48, 10); ctx.fill();
@@ -990,11 +1010,11 @@ function drawHUD() {
   const tip = p.charge > 0 ? '今ウサギに交代でロケットジャンプ！'
     : p.roll > 0 ? '甲羅アタック中！ 敵もブロックも突き破れ'
     : CHARS[on].desc;
-  txt(tip, 134, 56, 12.5, p.charge > 0 || p.roll > 0 ? '#ffd27a' : '#d8def0', 'left', p.charge > 0 || p.roll > 0 ? 'bold' : 'normal');
+  txt(tip, 134, 56, 12.5, p.charge > 0 || p.roll > 0 ? '#ffd27a' : '#d8def0', 'left', p.charge > 0 || p.roll > 0 ? 'bold' : 'normal', LW - 130);
   // 右上
-  ctx.fillStyle = 'rgba(20,24,40,0.72)'; rr(W - 262, 12, 250, 64, 12); ctx.fill();
-  txt(st.S.name, W - 250, 32, 14, '#ffe08a');
-  txt(`🥕 ${st.got}/${st.carrots.length}　💥 ${st.deaths}　⏱ ${fmt(st.time)}`, W - 250, 56, 14, '#fff');
+  ctx.fillStyle = 'rgba(20,24,40,0.72)'; rr(W - 12 - RW, 12, RW, 64, 12); ctx.fill();
+  txt(st.S.name, W - RW, 32, 14, '#ffe08a', 'left', 'bold', RW - 24);
+  txt(`🥕 ${st.got}/${st.carrots.length}　💥 ${st.deaths}　⏱ ${fmt(st.time)}`, W - RW, 56, 14, '#fff', 'left', 'bold', RW - 24);
   // 下（スマホはボタンがあるので出さない）
   if (TOUCH) return;
   ctx.fillStyle = 'rgba(20,24,40,0.55)'; rr(W / 2 - 330, H - 34, 660, 26, 13); ctx.fill();
@@ -1009,14 +1029,14 @@ function draw() {
     drawBackground(performance.now() * 0.03);
     ctx.fillStyle = '#5cbf4a'; ctx.fillRect(0, 430, W, 90); ctx.fillStyle = '#8b5a2b'; ctx.fillRect(0, 445, W, 75);
     const t = performance.now() / 200;
-    drawKame(370, 398, 1, false, t, 1.6);
-    drawUsagi(540, 398, -1, t, true, 1.6);
+    drawKame(W / 2 - 110, 398, 1, false, t, 1.6);
+    drawUsagi(W / 2 + 60, 398, -1, t, true, 1.6);
     outlined('カメとウサギ', W / 2, 120, 64, '#fff', '#2d5a2a');
     outlined('ふたりで大冒険', W / 2, 190, 40, '#ffe08a', '#6b3a1a');
-    txt('カメ＝守り　ウサギ＝ジャンプとスピード。交代しながらゴールを目指せ！', W / 2, 250, 17, '#2b2b3a', 'center');
+    txt('カメ＝守り　ウサギ＝ジャンプとスピード。交代しながらゴールを目指せ！', W / 2, 250, 17, '#2b2b3a', 'center', 'bold', W - 40);
     if (Math.floor(performance.now() / 500) % 2) outlined(TOUCH ? 'タップでスタート' : 'Enter／スペースでスタート', W / 2, 300, 24, '#fff');
     const bt = STAGES.map((s, i) => `${i + 1}：${best['s' + i] ? fmt(best['s' + i]) : '--'}`).join('　');
-    txt((TOUCH ? '' : '数字キーでステージ選択　M 音' + (Music.muted ? 'OFF' : 'ON') + '　') + 'ベスト ' + bt, W / 2, 490, 14, '#fff', 'center', 'normal');
+    txt((TOUCH ? '' : '数字キーでステージ選択　M 音' + (Music.muted ? 'OFF' : 'ON') + '　') + 'ベスト ' + bt, W / 2, 490, 14, '#fff', 'center', 'normal', W - 40);
     return;
   }
   drawWorld();
@@ -1045,6 +1065,7 @@ function draw() {
   }
 }
 
+layoutView();
 requestAnimationFrame(frame);
 </script>
 </body>
