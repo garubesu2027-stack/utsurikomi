@@ -97,7 +97,7 @@ const CHARS = {
 
 // ===================== ステージ（地図の記号） =====================
 // #=地面 ==石 ^=トゲ C=崩れる橋（カメが乗ると落ちる） V=落石装置 A=矢（左向き） D=矢（右向き）
-// B=押せる箱 E=敵 *=ニンジン K=中間地点 P=スタート G=ゴール
+// X=ひび割れブロック（甲羅アタックで壊れる） B=押せる箱 E=敵 *=ニンジン K=中間地点 P=スタート G=ゴール
 const STAGES = [
   {
     name: 'ステージ1　はじめの草原', start: 'kame', bgm: { song: 'sougen', bpm: 140 },
@@ -174,9 +174,44 @@ const STAGES = [
       '###########        ##########################################################        ###########',
     ],
   },
+  {
+    name: 'ステージ4　コンボの塔', start: 'usagi', bgm: { song: 'sougen', bpm: 156, tr: 2 },
+    sky: ['#5fb3a8', '#d6f2e6'], hill: '#7cc4a0',
+    hints: [
+      { x: 2, y: 5, t: '【甲羅アタック】ウサギで全力ダッシュ中にカメへ交代！' },
+      { x: 13, y: 4, t: 'ひび割れブロックは甲羅アタックで壊せる' },
+      { x: 33, y: 5, t: '甲羅アタックは敵もまとめてはね飛ばす' },
+      { x: 38, y: 3, t: '【ロケットジャンプ】カメのガードで攻撃を受けた直後にウサギへ交代！' },
+      { x: 62, y: 4, t: '高いひび割れ壁。下だけ壊せば通れる' },
+    ],
+    map: [
+      '',
+      '',
+      '                                                *',
+      '                                                        *',
+      '',
+      '                                                         K',
+      '                                                    #########',
+      '                                        *           #########           X',
+      '          *     ===============                     #########           X       *',
+      '                           X                        #########     *     X',
+      '  P                   *    X     K   E  E  E        A########           X             G',
+      '############################################################################################',
+      '############################################################################################',
+    ],
+  },
 ];
 
-const SOLID = new Set(['#', '=', '^', 'C', 'V', 'A', 'D']);
+const SOLID = new Set(['#', '=', '^', 'C', 'V', 'A', 'D', 'X']);
+
+// ===================== 切り替えコンボ（数字を変えると調整できる） =====================
+const COMBO = {
+  rollMinSpeed: 4.5, // 甲羅アタック：この速さ以上で走るウサギ→カメで発動
+  rollSpeed: 7.5,    // 甲羅アタックの初速
+  rollTime: 62,      // 甲羅アタックの長さ（60で1秒）
+  chargeTime: 40,    // ロケットジャンプ：ガードで受けてから交代できる猶予
+  rocketJump: 16.5,  // ロケットジャンプの強さ（ウサギの普通のジャンプは12.4）
+};
 
 // ===================== 入力 =====================
 const keys = {}; let pressed = {};
@@ -371,7 +406,7 @@ function loadStage(i) {
     i, S, w, h: base.length, base, tiles: null,
     spawnsBox: [], spawnsEnemy: [], carrots: [], checkpoints: [], goal: null,
     shooters: [], droppers: [],
-    boxes: [], enemies: [], rocks: [], arrows: [], particles: [], crumble: {},
+    boxes: [], enemies: [], rocks: [], arrows: [], particles: [], popups: [], crumble: {},
     time: 0, deaths: 0, got: 0, spawn: null, flash: 0,
   };
   for (let y = 0; y < st.h; y++) for (let x = 0; x < w; x++) {
@@ -401,7 +436,7 @@ function resetDynamic() {
 
 function makePlayer(s) {
   return { x: s.x, y: s.y, w: 30, h: 32, vx: 0, vy: 0, onGround: false, face: 1, char: s.char,
-    shield: false, coyote: 0, jbuf: 0, swCd: 0, dead: 0, anim: 0, inv: 0 };
+    shield: false, coyote: 0, jbuf: 0, swCd: 0, dead: 0, anim: 0, inv: 0, roll: 0, charge: 0, rocket: false };
 }
 
 // ===================== 当たり判定 =====================
@@ -448,6 +483,10 @@ function burst(x, y, color, n = 12, spd = 3) {
 }
 
 // ===================== プレイヤー更新 =====================
+const guarded = () => p.shield || p.roll > 0;
+function guardHit() { st.flash = 6; if (p.char === 'kame') p.charge = COMBO.chargeTime; }
+function popup(t, color) { st.popups.push({ x: p.x + 15, y: p.y - 24, t, color, life: 60 }); }
+
 function killPlayer() {
   if (p.dead || p.inv > 0) return;
   p.dead = 50; st.deaths++;
@@ -458,33 +497,59 @@ function updatePlayer() {
   const C = CHARS[p.char];
   if (p.swCd > 0) p.swCd--;
   if (p.inv > 0) p.inv--;
+  if (p.charge > 0) p.charge--;
 
   // 交代
   if (pSwitch() && p.swCd <= 0) {
-    p.char = p.char === 'kame' ? 'usagi' : 'kame';
+    const from = p.char;
+    p.char = from === 'kame' ? 'usagi' : 'kame';
     p.swCd = 15; p.shield = false;
     const N = CHARS[p.char];
-    p.vx = Math.max(-N.speed, Math.min(N.speed, p.vx));
+    if (from === 'usagi' && Math.abs(p.vx) >= COMBO.rollMinSpeed) {
+      // 🐰→🐢 甲羅アタック：ダッシュの勢いのまま甲羅で突進
+      p.roll = COMBO.rollTime; p.vx = Math.sign(p.vx) * COMBO.rollSpeed; p.face = Math.sign(p.vx);
+      popup('甲羅アタック！', '#9fe3ff');
+    } else if (from === 'kame' && p.charge > 0) {
+      // 🐢→🐰 ロケットジャンプ：ガードで受けた衝撃を使って大ジャンプ
+      p.vy = -COMBO.rocketJump; p.rocket = true; p.charge = 0; p.roll = 0;
+      popup('ロケットジャンプ！', '#ffb347');
+      burst(p.x + 15, p.y + 30, '#ffb347', 24, 4);
+    } else {
+      p.roll = 0;
+      p.vx = Math.max(-N.speed, Math.min(N.speed, p.vx));
+    }
     burst(p.x + 15, p.y + 16, '#fff6c8', 16, 3);
     st.flash = 8;
   }
 
   const N = CHARS[p.char];
-  p.shield = !!(N.canShield && kDown() && p.onGround);
-  const max = p.shield ? N.shieldSpeed : N.speed;
-  let dir = (kRight() ? 1 : 0) - (kLeft() ? 1 : 0);
-  if (dir) { p.vx += dir * N.accel; p.face = dir; }
-  else p.vx *= p.onGround ? 0.75 : 0.95;
-  p.vx = Math.max(-max, Math.min(max, p.vx));
-  if (Math.abs(p.vx) < 0.05) p.vx = 0;
+  if (p.roll > 0) {
+    // 甲羅アタック中は操作を受け付けず滑っていく
+    p.roll--; p.shield = false;
+    p.vx *= 0.99;
+    eachTile({ x: p.x + p.vx, y: p.y, w: p.w, h: p.h }, (tx, ty) => {
+      if (tileAt(tx, ty) === 'X') { st.tiles[ty][tx] = ' '; burst(tx * T + 20, ty * T + 20, '#a9a9b3', 16, 4); st.flash = 5; }
+    });
+    if (Math.abs(p.vx) < N.speed) p.roll = 0;
+    if (p.onGround && st.time % 3 === 0) burst(p.x + 15 - p.face * 14, p.y + 30, '#e8e2d0', 1, 1);
+  } else {
+    p.shield = !!(N.canShield && kDown() && p.onGround);
+    const max = p.shield ? N.shieldSpeed : N.speed;
+    let dir = (kRight() ? 1 : 0) - (kLeft() ? 1 : 0);
+    if (dir) { p.vx += dir * N.accel; p.face = dir; }
+    else p.vx *= p.onGround ? 0.75 : 0.95;
+    p.vx = Math.max(-max, Math.min(max, p.vx));
+    if (Math.abs(p.vx) < 0.05) p.vx = 0;
+  }
 
   // ジャンプ（先行入力＋コヨーテタイム）
   if (pJump()) p.jbuf = 7; else if (p.jbuf > 0) p.jbuf--;
   if (p.onGround) p.coyote = 6; else if (p.coyote > 0) p.coyote--;
-  if (p.jbuf > 0 && p.coyote > 0 && !p.shield) {
+  if (p.jbuf > 0 && p.coyote > 0 && !p.shield && !p.roll) {
     p.vy = -N.jump; p.jbuf = 0; p.coyote = 0;
   }
-  if (!kJumpHeld() && p.vy < -3) p.vy *= 0.85;
+  if (!kJumpHeld() && p.vy < -3 && !p.rocket) p.vy *= 0.85;
+  if (p.vy >= 0) p.rocket = false;
   p.vy = Math.min(p.vy + GRAV, MAXFALL);
 
   // 箱押し（カメだけ）
@@ -497,7 +562,10 @@ function updatePlayer() {
       }
     }
   }
-  moveX(p, p.vx, st.boxes) && (p.vx = 0);
+  if (moveX(p, p.vx, st.boxes)) {
+    if (p.roll) { burst(p.x + 15 + p.face * 16, p.y + 16, '#e8e2d0', 10, 3); p.roll = 0; p.vx = -p.face * 2; p.vy = -4; }
+    else p.vx = 0;
+  }
   moveY(p, p.vy, st.boxes);
   if (Math.abs(p.vx) > 0.3 && p.onGround) p.anim += Math.abs(p.vx) * 0.12;
 
@@ -555,7 +623,7 @@ function updateWorld() {
     eachTile(r, (tx, ty) => { if (isSolid(tx, ty)) hit = true; });
     if (st.boxes.some(b => overlap(r, b))) hit = true;
     if (!p.dead && overlap(r, p)) {
-      if (p.shield) { st.flash = 6; } else killPlayer();
+      if (guarded()) guardHit(); else killPlayer();
       hit = true;
     }
     if (hit) { r.dead = true; burst(r.x + 12, r.y + 12, '#8d8a85', 10, 3); }
@@ -577,7 +645,7 @@ function updateWorld() {
       a.dead = true; burst(a.x + 12, a.y, '#c9b08a', 5, 1.5);
     } else if (!p.dead && overlap(a, p)) {
       a.dead = true;
-      if (p.shield) { st.flash = 6; burst(a.x + 12, a.y, '#9fe3ff', 8, 2.5); } else killPlayer();
+      if (guarded()) { guardHit(); burst(a.x + 12, a.y, '#9fe3ff', 8, 2.5); } else killPlayer();
     }
   }
   st.arrows = st.arrows.filter(a => !a.dead);
@@ -595,8 +663,8 @@ function updateWorld() {
     if (!p.dead && overlap(e, p)) {
       if (p.vy > 0 && p.y + p.h - e.y < 16) {
         e.dead = 1; e.vy = -4; e.vx = 0; p.vy = -8; burst(e.x + 15, e.y + 10, '#8a4b2a', 12, 3);
-      } else if (p.shield) {
-        e.dead = 1; e.vy = -7; e.vx = (e.x > p.x ? 1 : -1) * 4; st.flash = 6; burst(e.x + 15, e.y + 10, '#9fe3ff', 10, 3);
+      } else if (guarded()) {
+        e.dead = 1; e.vy = -7; e.vx = (e.x > p.x ? 1 : -1) * 4; guardHit(); burst(e.x + 15, e.y + 10, '#9fe3ff', 10, 3);
       } else killPlayer();
     }
   }
@@ -605,6 +673,8 @@ function updateWorld() {
   // パーティクル
   for (const q of st.particles) { q.x += q.vx; q.y += q.vy; q.vy += 0.15; q.life--; }
   st.particles = st.particles.filter(q => q.life > 0);
+  for (const q of st.popups) { q.y -= 0.7; q.life--; }
+  st.popups = st.popups.filter(q => q.life > 0);
   if (st.flash > 0) st.flash--;
 }
 
@@ -693,6 +763,17 @@ function drawKame(x, y, face, shield, anim, scale = 1) {
   ctx.restore();
 }
 
+function drawShellRoll(x, y, ang) {
+  ctx.save(); ctx.translate(x + 15, y + 17); ctx.rotate(ang);
+  ctx.fillStyle = 'rgba(120,210,255,0.25)'; ctx.beginPath(); ctx.arc(0, 0, 19, 0, 7); ctx.fill();
+  ctx.fillStyle = '#3f9b4f'; ctx.beginPath(); ctx.arc(0, 0, 15, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#2a6b35'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.strokeStyle = '#6cc070'; ctx.lineWidth = 1.6;
+  for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 6, Math.sin(a) * 6); ctx.lineTo(Math.cos(a) * 14, Math.sin(a) * 14); ctx.stroke(); }
+  ctx.beginPath(); ctx.arc(0, 0, 6, 0, 7); ctx.stroke();
+  ctx.restore();
+}
+
 function drawUsagi(x, y, face, anim, onGround, scale = 1) {
   ctx.save(); ctx.translate(x + 15, y + 32); ctx.scale(scale, scale);
   const bob = onGround ? Math.abs(Math.sin(anim)) * -3 : -2;
@@ -737,6 +818,11 @@ function drawTile(c, tx, ty, cam) {
       ctx.fillStyle = '#3b3b45'; ctx.beginPath(); ctx.arc(x + (c === 'A' ? 6 : 34), y + 20, 7, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.arc(x + 20, y + 10, 4, 0, Math.PI * 2); ctx.fill();
     }
+  } else if (c === 'X') {
+    ctx.fillStyle = '#b3aea4'; ctx.fillRect(x, y, T, T);
+    ctx.strokeStyle = '#7b766c'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, T - 2, T - 2);
+    ctx.beginPath(); ctx.moveTo(x + 8, y + 4); ctx.lineTo(x + 18, y + 16); ctx.lineTo(x + 13, y + 24); ctx.lineTo(x + 24, y + 36);
+    ctx.moveTo(x + 18, y + 16); ctx.lineTo(x + 32, y + 12); ctx.moveTo(x + 13, y + 24); ctx.lineTo(x + 4, y + 30); ctx.stroke();
   } else if (c === '^') {
     ctx.fillStyle = '#8b5a2b'; ctx.fillRect(x, y + 12, T, T - 12);
     ctx.fillStyle = '#b8b8c8';
@@ -845,10 +931,21 @@ function drawWorld() {
   }
   // プレイヤー
   if (!p.dead && !(p.inv > 0 && Math.floor(p.inv / 4) % 2)) {
-    if (p.char === 'kame') drawKame(p.x - cam, p.y, p.face, p.shield, p.anim);
+    if (p.char === 'kame' && p.roll) drawShellRoll(p.x - cam, p.y, st.time * 0.5 * p.face);
+    else if (p.char === 'kame') {
+      if (p.charge > 0) {
+        const r = 24 + Math.sin(st.time * 0.6) * 3;
+        ctx.strokeStyle = 'rgba(255,170,60,0.9)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(p.x - cam + 15, p.y + 18, r, 0, 7); ctx.stroke();
+        outlined('交代!', p.x - cam + 15, p.y - 22, 15, '#ffb347');
+      }
+      drawKame(p.x - cam, p.y, p.face, p.shield, p.anim);
+    }
     else drawUsagi(p.x - cam, p.y, p.face, p.anim, p.onGround);
   }
   for (const q of st.particles) { ctx.globalAlpha = Math.min(1, q.life / 20); ctx.fillStyle = q.color; ctx.beginPath(); ctx.arc(q.x - cam, q.y, q.r, 0, 7); ctx.fill(); }
+  ctx.globalAlpha = 1;
+  for (const q of st.popups) { ctx.globalAlpha = Math.min(1, q.life / 20); outlined(q.t, q.x - cam, q.y, 20, q.color); }
   ctx.globalAlpha = 1;
   if (st.flash) { ctx.fillStyle = `rgba(255,255,255,${st.flash / 30})`; ctx.fillRect(0, 0, W, H); }
 }
@@ -864,7 +961,10 @@ function drawHUD() {
   drawKame(29, 24, 1, false, 0, 0.9);
   drawUsagi(83, 30, 1, 0, false, 0.75);
   txt(CHARS[on].name + 'で行動中', 134, 33, 17, '#fff');
-  txt(CHARS[on].desc, 134, 56, 12.5, '#d8def0', 'left', 'normal');
+  const tip = p.charge > 0 ? '今ウサギに交代でロケットジャンプ！'
+    : p.roll > 0 ? '甲羅アタック中！ 敵もブロックも突き破れ'
+    : CHARS[on].desc;
+  txt(tip, 134, 56, 12.5, p.charge > 0 || p.roll > 0 ? '#ffd27a' : '#d8def0', 'left', p.charge > 0 || p.roll > 0 ? 'bold' : 'normal');
   // 右上
   ctx.fillStyle = 'rgba(20,24,40,0.72)'; rr(W - 262, 12, 250, 64, 12); ctx.fill();
   txt(st.S.name, W - 250, 32, 14, '#ffe08a');
