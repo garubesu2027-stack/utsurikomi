@@ -18,6 +18,7 @@
 
   /* ===== スマホ（タッチ操作） ===== */
   body.touch{touch-action:none;overflow:hidden;position:fixed;inset:0;}
+  body.touch *{touch-action:none;}
   body.touch canvas{border-radius:0;box-shadow:none;}
   body.touch #pad{display:block;}
   .btn{position:absolute;display:flex;align-items:center;justify-content:center;border-radius:50%;
@@ -349,8 +350,12 @@ if (TOUCH) {
   tap($('b-menu'), () => { if (mode !== 'title') mode = 'title'; });
   // 画面タップ＝決定（スタート・次のステージへ）
   cv.addEventListener('pointerdown', e => { e.preventDefault(); setKey('Enter', true); setTimeout(() => setKey('Enter', false), 50); });
-  // iPhoneは指を離したタイミングでないと音が鳴らないことがあるので保険
-  addEventListener('touchend', () => Music.unlock(), { passive: true });
+  // iPhoneのダブルタップ拡大・ピンチ拡大を止める（ボタンの連打でズームしないように）
+  // ※ボタン操作はpointerイベントで受けているので、touchを止めても操作には影響しない
+  document.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+  document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  document.addEventListener('touchend', e => { Music.unlock(); e.preventDefault(); }, { passive: false });
+  ['gesturestart', 'gesturechange', 'dblclick'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
   addEventListener('contextmenu', e => e.preventDefault());
 }
 
