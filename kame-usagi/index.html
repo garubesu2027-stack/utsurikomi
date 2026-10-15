@@ -264,8 +264,10 @@ const JINGLES = {
 };
 
 const Music = (() => {
-  let ac = null, master = null, noiseBuf = null, timer = null;
-  let want = null, cur = null, song = null, stepI = 0, nextT = 0, muted = false;
+  let ac = null, master = null, noiseBuf = null, src = null, token = 0;
+  let X = null, D = null; // 音を作る先（ふだんは ac/master、BGMの作り置き中はオフライン用）
+  let want = null, cur = null, muted = false;
+  const cache = {};
   try { muted = localStorage.getItem('kameusagi-mute') === '1'; } catch (e) {}
   const SEMI = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   const freq = (n, tr = 0) => {
@@ -273,36 +275,42 @@ const Music = (() => {
     return 440 * Math.pow(2, (SEMI[m[1]] + (m[2] ? 1 : 0) + 12 * (+m[3] + 1) - 69 + tr) / 12);
   };
   function tone(f, t, dur, type, vol) {
-    const o = ac.createOscillator(), g = ac.createGain();
+    const o = X.createOscillator(), g = X.createGain();
     o.type = type; o.frequency.value = f;
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.01);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+    o.connect(g); g.connect(D); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function sweep(f0, f1, t, dur, type, vol) {
+    const o = X.createOscillator(), g = X.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(D); o.start(t); o.stop(t + dur + 0.02);
   }
   function noise(t, dur, vol, hp) {
     if (!noiseBuf) {
-      noiseBuf = ac.createBuffer(1, ac.sampleRate * 0.5, ac.sampleRate);
+      noiseBuf = X.createBuffer(1, X.sampleRate * 0.5, X.sampleRate);
       const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     }
-    const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+    const s = X.createBufferSource(), f = X.createBiquadFilter(), g = X.createGain();
     s.buffer = noiseBuf; f.type = 'highpass'; f.frequency.value = hp;
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t + dur);
+    s.connect(f); f.connect(g); g.connect(D); s.start(t); s.stop(t + dur);
   }
   function kick(t) {
-    const o = ac.createOscillator(), g = ac.createGain();
+    const o = X.createOscillator(), g = X.createGain();
     o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
     g.gain.setValueAtTime(0.45, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
-    o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.16);
+    o.connect(g); g.connect(D); o.start(t); o.stop(t + 0.16);
   }
   function build(b) {
     const S = SONGS[b.song];
     return { mel: S.mel.join(' ').split(/\s+/), bass: S.bass, bpm: b.bpm, tr: b.tr || 0, drums: b.drums !== false };
   }
-  function playStep(i, t, sd) {
+  function playStep(song, i, t, sd) {
     const tok = song.mel[i];
     if (tok !== '-' && tok !== '.') {
-      let n = 1; while (song.mel[(i + n) % song.mel.length] === '-') n++;
+      let n = 1; while (i + n < song.mel.length && song.mel[i + n] === '-') n++;
       tone(freq(tok, song.tr), t, n * sd * 0.92, 'square', 0.07);
     }
     const k = i % 8, root = song.bass[Math.floor(i / 8) % song.bass.length];
@@ -313,27 +321,47 @@ const Music = (() => {
       if (k % 2 === 1) noise(t, 0.03, 0.06, 7000);
     }
   }
-  function tick() {
-    const sd = 60 / song.bpm / 2;
-    while (nextT < ac.currentTime + 0.15) {
-      playStep(stepI, nextT, sd);
-      nextT += sd; stepI = (stepI + 1) % song.mel.length;
-    }
+  // BGMは1周ぶんを先にまとめて作り、それをループ再生する。
+  // その場で作り続ける方式だと、画面録画中などスマホが忙しいときに音作りが間に合わずノイズになるため。
+  function render(b) {
+    const key = JSON.stringify(b);
+    if (!cache[key]) cache[key] = new Promise((resolve, reject) => {
+      const song = build(b), sd = 60 / song.bpm / 2;
+      const O = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      const off = new O(1, Math.ceil(song.mel.length * sd * ac.sampleRate), ac.sampleRate);
+      const px = X, pd = D; X = off; D = off.destination;
+      try { for (let i = 0; i < song.mel.length; i++) playStep(song, i, i * sd, sd); } finally { X = px; D = pd; }
+      off.oncomplete = e => resolve(e.renderedBuffer);
+      const r = off.startRendering(); if (r && r.then) r.then(resolve, reject);
+    });
+    return cache[key];
   }
   function start() {
-    clearInterval(timer); timer = null; cur = null;
+    const my = ++token;
+    if (src) { try { src.stop(); } catch (e) {} src.disconnect(); src = null; }
+    cur = null;
     if (!ac || !want) return;
-    cur = want; song = build(want); stepI = 0; nextT = ac.currentTime + 0.05;
-    timer = setInterval(tick, 25); tick();
+    const b = want; cur = b;
+    render(b).then(buf => {
+      if (my !== token) return; // 作っている間に別の曲に切り替わった
+      src = ac.createBufferSource(); src.buffer = buf; src.loop = true;
+      src.connect(master); src.start(ac.currentTime + 0.03);
+    }).catch(() => {});
   }
   return {
     // キー入力のタイミングで呼ぶ（ブラウザは操作前に音を出せないため）
     unlock() {
       if (!ac) {
         const A = window.AudioContext || window.webkitAudioContext; if (!A) return;
-        ac = new A(); master = ac.createGain(); master.gain.value = muted ? 0 : 0.35; master.connect(ac.destination);
+        try { ac = new A({ latencyHint: 'playback' }); } catch (e) { ac = new A(); } // 遅れより途切れないことを優先
+        // 音が重なっても上限を超えて割れないように、最後に自動で抑える
+        const lim = ac.createDynamicsCompressor();
+        lim.threshold.value = -12; lim.knee.value = 6; lim.ratio.value = 12; lim.attack.value = 0.003; lim.release.value = 0.15;
+        master = ac.createGain(); master.gain.value = muted ? 0 : 0.35;
+        master.connect(lim); lim.connect(ac.destination);
+        X = ac; D = master;
       }
-      if (ac.state === 'suspended') ac.resume();
+      if (ac.state !== 'running') ac.resume();
       if (want && cur !== want) start();
     },
     play(b) { if (want === b && cur === b) return; want = b; start(); },
@@ -347,12 +375,6 @@ const Music = (() => {
     sfx(name) {
       if (!ac) return;
       const t = ac.currentTime + 0.01;
-      const sweep = (f0, f1, t0, dur, type, vol) => {
-        const o = ac.createOscillator(), g = ac.createGain();
-        o.type = type; o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
-        g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
-        o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + dur + 0.02);
-      };
       if (name === 'roll') { // ギュルンッ：低い音が回転しながら上がる＋風切り
         for (let i = 0; i < 4; i++) sweep(180 + i * 60, 420 + i * 90, t + i * 0.045, 0.06, 'square', 0.12);
         noise(t, 0.25, 0.22, 900);
