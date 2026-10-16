@@ -81,6 +81,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
+const VERSION = '10/16-a'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 const FONT = '"Hiragino Maru Gothic ProN","Hiragino Sans","Yu Gothic",sans-serif';
 
 // ===================== キャラ設定（能力を足すときはここ） =====================
@@ -1096,6 +1097,7 @@ function draw() {
     txt('カメ＝守り　ウサギ＝ジャンプとスピード。交代しながらゴールを目指せ！', W / 2, 250, 17, '#2b2b3a', 'center', 'bold', W - 40);
     if (Math.floor(performance.now() / 500) % 2) outlined(TOUCH ? 'タップでスタート' : 'Enter／スペースでスタート', W / 2, 300, 24, '#fff');
     const bt = STAGES.map((s, i) => `${i + 1}：${best['s' + i] ? fmt(best['s' + i]) : '--'}`).join('　');
+    txt('ver ' + VERSION, W - 10, H - 12, 11, 'rgba(255,255,255,0.6)', 'right', 'normal');
     txt((TOUCH ? '' : '数字キーでステージ選択　M 音' + (Music.muted ? 'OFF' : 'ON') + '　') + 'ベスト ' + bt, W / 2, 490, 14, '#fff', 'center', 'normal', W - 40);
     return;
   }
