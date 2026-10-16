@@ -86,7 +86,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/16-h'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/17-a'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'test';
 const IS_TEST = EDITION === 'test';
@@ -111,7 +111,7 @@ const CHARS = {
 
 // ===================== ステージ（地図の記号） =====================
 // #=地面 ==石 ^=トゲ C=崩れる橋（カメが乗ると落ちる） V=落石装置 A=矢（左向き） D=矢（右向き）
-// X=ひび割れブロック（甲羅アタックで壊れる） F=ニセモノのゴール（触るとはじかれる。飛び越えるしかない） B=押せる箱 E=敵 *=ニンジン K=中間地点 P=スタート G=ゴール
+// X=ひび割れブロック（甲羅アタックで壊れる） F=ニセモノのゴール（触るとはじかれる。飛び越えるしかない） B=押せる箱 E=敵 *=20πコイン K=中間地点 P=スタート G=ゴール
 const STAGES = [
   {
     name: 'ステージ1　はじめの草原', start: 'kame', bgm: { song: 'sougen', bpm: 140 },
@@ -375,7 +375,7 @@ const Music = (() => {
     // ふだんの動きの音
     jump: [0.15, t => sweep(260, 620, t, 0.1, 'square', 0.06)],                                   // ピョッ
     swap: [0.2, t => { tone(660, t, 0.06, 'square', 0.06); tone(990, t + 0.06, 0.09, 'square', 0.06); }], // ポコッ
-    carrot: [0.3, t => { tone(988, t, 0.07, 'square', 0.06); tone(1319, t + 0.07, 0.18, 'square', 0.06); }], // ピコーン
+    coin: [0.3, t => { tone(988, t, 0.07, 'square', 0.06); tone(1319, t + 0.07, 0.18, 'square', 0.06); }], // ピコーン
     check: [0.45, t => { [784, 988, 1175].forEach((f, i) => tone(f, t + i * 0.08, 0.16, 'square', 0.06)); }], // 中間地点
     block: [0.2, t => { tone(1760, t, 0.08, 'triangle', 0.14); noise(t, 0.05, 0.1, 4000); }],     // カキン（ガード）
     stomp: [0.2, t => { sweep(400, 90, t, 0.12, 'square', 0.09); kick(t); }],                     // ふみっ
@@ -597,7 +597,7 @@ function loadStage(i) {
   const base = S.map.map(r => r.padEnd(w, ' ').split(''));
   st = {
     i, S, w, h: base.length, base, tiles: null,
-    spawnsBox: [], spawnsEnemy: [], carrots: [], checkpoints: [], goal: null,
+    spawnsBox: [], spawnsEnemy: [], coins: [], checkpoints: [], goal: null,
     shooters: [], droppers: [], fakes: [],
     boxes: [], enemies: [], rocks: [], arrows: [], particles: [], popups: [], crumble: {},
     time: 0, deaths: 0, got: 0, spawn: null, flash: 0,
@@ -611,7 +611,7 @@ function loadStage(i) {
     if (c === 'B') st.spawnsBox.push({ x: px, y: py });
     if (c === 'E') st.spawnsEnemy.push({ x: px + 5, y: py + 12 });
     if (c === 'K') st.checkpoints.push({ x: px + 8, y: py - 30, w: 24, h: 70, on: false });
-    if (c === '*') st.carrots.push({ x: px + 10, y: py + 8, w: 20, h: 24, got: false });
+    if (c === '*') st.coins.push({ x: px + 4, y: py + 4, w: 32, h: 32, got: false });
     // ゴールの当たり判定は空の上まで（ウサギが旗を飛び越えてもクリア）。見た目の旗の位置は gy で別に持つ
     if (c === 'G') st.goal = { x: px + 4, y: -200, w: 32, h: py + T + 200, gy: py - 80 };
     if (c === 'A' || c === 'D') st.shooters.push({ tx: x, ty: y, dir: c === 'A' ? -1 : 1, t: (x * 23) % 110 });
@@ -779,8 +779,11 @@ function updatePlayer() {
 
   if (p.y > st.h * T + 40) killPlayer();
 
-  // ニンジン・中間地点・ゴール
-  for (const c of st.carrots) if (!c.got && overlap(p, c)) { c.got = true; st.got++; burst(c.x + 10, c.y + 10, '#ff9a2e', 10, 2.5); Music.sfx('carrot'); }
+  // コイン・中間地点・ゴール
+  for (const c of st.coins) if (!c.got && overlap(p, c)) {
+    c.got = true; st.got++; burst(c.x + 16, c.y + 16, '#ffd34d', 12, 2.5); Music.sfx('coin');
+    st.popups.push({ x: c.x + 16, y: c.y + 4, t: '20π', color: '#ffd34d', stroke: '#6b4300', size: 30, life: 45 }); // 取った瞬間に大きく浮かぶ
+  }
   for (const k of st.checkpoints) if (!k.on && overlap(p, k)) {
     st.checkpoints.forEach(o => o.on = false); k.on = true; Music.sfx('check');
     st.spawn = { x: k.x - 3, y: k.y + 70 - 32 - 2, char: p.char };
@@ -886,7 +889,8 @@ function stageClear() {
   Music.jingle('clear');
   const key = 's' + st.i;
   if (!best[key] || st.time < best[key]) { best[key] = st.time; st.newBest = true; saveBest(); }
-  (totalStats = totalStats || []).push({ i: st.i, time: st.time, deaths: st.deaths, got: st.got, all: st.carrots.length });
+  (totalStats = totalStats || []).push({ i: st.i, time: st.time, deaths: st.deaths, got: st.got, all: st.coins.length });
+  st.line = clearLine();
   burst(st.goal.x + 16, st.goal.gy + 20, '#ffe14d', 40, 5);
 }
 
@@ -978,6 +982,44 @@ function drawKame(x, y, face, shield, anim, scale = 1) {
   ctx.beginPath(); ctx.moveTo(-6, sy - 9); ctx.lineTo(6, sy - 9); ctx.lineTo(9, sy - 1); ctx.moveTo(-6, sy - 9); ctx.lineTo(-9, sy - 1);
   ctx.moveTo(-6, sy - 9); ctx.lineTo(-3, sy - 16); ctx.moveTo(6, sy - 9); ctx.lineTo(3, sy - 16); ctx.stroke();
   ctx.restore();
+}
+
+// 20πコイン（文字は形を測って上下左右の真ん中に置く）
+function drawCoin(cx, cy, d) {
+  const r = d / 2;
+  ctx.save(); ctx.translate(cx, cy);
+  ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+  ctx.fillStyle = '#ffd34d'; ctx.beginPath(); ctx.arc(0, 0, r * 0.86, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#d9a514'; ctx.lineWidth = Math.max(1, d * 0.05); ctx.beginPath(); ctx.arc(0, 0, r * 0.7, 0, 7); ctx.stroke();
+  ctx.fillStyle = '#8a5a00'; ctx.font = `900 ${Math.round(d * 0.31)}px ${FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  const m = ctx.measureText('20π');
+  const w = m.actualBoundingBoxLeft + m.actualBoundingBoxRight, h = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+  ctx.fillText('20π', -w / 2 + m.actualBoundingBoxLeft, h / 2 - m.actualBoundingBoxDescent);
+  ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.ellipse(-r * 0.4, -r * 0.45, r * 0.22, r * 0.1, -0.6, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+// クリア時のひとこと：コイン全部→ゴールしたキャラ（3つからランダム）／取りこぼし→反対のキャラがツッコミ
+const COIN_LINES = {
+  kame: ['全部拾ったよ。えっへん！', 'これで老後も安心だね！', 'このコイン、甲羅にしまっとこ！'],
+  usagi: ['コイン全部ゲットや！', 'ワイにかかればこんなもんや！', 'これで今週も大勝ちや！'],
+};
+const MISS_LINES = { kame: n => `あと${n}枚残ってるよ〜`, usagi: n => `あと${n}枚残っとるやん` };
+function clearLine() {
+  const total = st.coins.length, left = total - st.got;
+  if (!total) return null;
+  if (left === 0) { const L = COIN_LINES[p.char]; return { who: p.char, t: L[Math.floor(Math.random() * L.length)] }; }
+  const other = p.char === 'kame' ? 'usagi' : 'kame';
+  return { who: other, t: MISS_LINES[other](left) };
+}
+function drawSpeech(line, cx, cy) {
+  ctx.font = `bold 18px ${FONT}`;
+  const tw = Math.min(W - 160, ctx.measureText(line.t).width), bw = tw + 90, x = cx - bw / 2;
+  ctx.fillStyle = line.who === 'kame' ? 'rgba(92,191,74,0.3)' : 'rgba(247,168,196,0.32)'; rr(x, cy - 28, bw, 56, 14); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+  if (line.who === 'kame') drawKame(x + 14, cy - 22, 1, false, 0, 1);
+  else drawUsagi(x + 16, cy - 10, 1, 0, false, 0.85);
+  txt(line.t, x + 66, cy, 18, '#fff', 'left', 'bold', W - 160);
 }
 
 function drawShellRoll(x, y, ang) {
@@ -1131,12 +1173,8 @@ function drawWorld() {
       outlined('ニセ!', gx + 17, gy - 16, 16, '#e2c2ff');
     } else outlined('GOAL', gx + 17, gy - 16, 16, '#fff');
   }
-  // ニンジン
-  for (const c of st.carrots) if (!c.got) {
-    const x = c.x - cam, y = c.y + Math.sin(st.time * 0.08 + c.x) * 3;
-    ctx.fillStyle = '#ff8a1e'; ctx.beginPath(); ctx.moveTo(x + 3, y + 8); ctx.lineTo(x + 17, y + 8); ctx.lineTo(x + 10, y + 26); ctx.fill();
-    ctx.fillStyle = '#45b03a'; ctx.beginPath(); ctx.ellipse(x + 7, y + 4, 2.5, 6, -0.4, 0, 7); ctx.ellipse(x + 13, y + 4, 2.5, 6, 0.4, 0, 7); ctx.fill();
-  }
+  // 20πコイン
+  for (const c of st.coins) if (!c.got) drawCoin(c.x - cam + 16, c.y + 16 + Math.sin(st.time * 0.08 + c.x) * 3, 32);
   // 箱
   for (const b of st.boxes) {
     const x = b.x - cam;
@@ -1189,7 +1227,7 @@ function drawWorld() {
   }
   for (const q of st.particles) { ctx.globalAlpha = Math.min(1, q.life / 20); ctx.fillStyle = q.color; ctx.beginPath(); ctx.arc(q.x - cam, q.y, q.r, 0, 7); ctx.fill(); }
   ctx.globalAlpha = 1;
-  for (const q of st.popups) { ctx.globalAlpha = Math.min(1, q.life / 20); outlined(q.t, q.x - cam, q.y, 20, q.color); }
+  for (const q of st.popups) { ctx.globalAlpha = Math.min(1, q.life / 20); outlined(q.t, q.x - cam, q.y, q.size || 20, q.color, q.stroke); }
   ctx.globalAlpha = 1;
   if (st.flash) { ctx.fillStyle = `rgba(255,255,255,${st.flash / 30})`; ctx.fillRect(0, 0, W, H); }
 }
@@ -1213,7 +1251,8 @@ function drawHUD() {
   // 右上
   ctx.fillStyle = 'rgba(20,24,40,0.72)'; rr(W - 12 - RW, 12, RW, 64, 12); ctx.fill();
   txt(st.S.name, W - RW, 32, 14, '#ffe08a', 'left', 'bold', RW - 24);
-  txt(`🥕 ${st.got}/${st.carrots.length}　💥 ${st.deaths}　⏱ ${fmt(st.time)}`, W - RW, 56, 14, '#fff', 'left', 'bold', RW - 24);
+  drawCoin(W - RW + 8, 56, 17); // コイン数のアイコン（絵文字は端末で見え方が違うので自前の絵）
+  txt(`${st.got}/${st.coins.length}　💥 ${st.deaths}　⏱ ${fmt(st.time)}`, W - RW + 21, 56, 14, '#fff', 'left', 'bold', RW - 45);
   // 下（スマホはボタンがあるので出さない）
   if (TOUCH) return;
   ctx.fillStyle = 'rgba(20,24,40,0.55)'; rr(W / 2 - 330, H - 34, 660, 26, 13); ctx.fill();
@@ -1276,11 +1315,12 @@ function draw() {
     txt(`${CHARS[st.S.start].name}からスタート`, W / 2, H / 2 + 28, 18, '#fff', 'center');
   }
   if (mode === 'clear') {
-    panel(220);
-    outlined('ステージクリア！', W / 2, H / 2 - 70, 40, '#ffe08a');
-    txt(`タイム ${fmt(st.time)}${st.newBest ? '　★ベスト更新！' : ''}`, W / 2, H / 2 - 15, 20, '#fff', 'center');
-    txt(`ニンジン ${st.got}/${st.carrots.length}　ミス ${st.deaths}`, W / 2, H / 2 + 20, 20, '#fff', 'center');
-    txt(st.i + 1 < STAGES.length ? (TOUCH ? 'タップ' : 'Enter') + ' で次のステージへ' : (TOUCH ? 'タップ' : 'Enter') + ' でエンディングへ', W / 2, H / 2 + 70, 16, '#b8c4e8', 'center');
+    panel(300);
+    outlined('ステージクリア！', W / 2, H / 2 - 110, 40, '#ffe08a');
+    txt(`タイム ${fmt(st.time)}${st.newBest ? '　★ベスト更新！' : ''}`, W / 2, H / 2 - 60, 20, '#fff', 'center');
+    txt(`コイン ${st.got}/${st.coins.length}　ミス ${st.deaths}`, W / 2, H / 2 - 28, 20, '#fff', 'center');
+    if (st.line) drawSpeech(st.line, W / 2, H / 2 + 30);
+    txt(st.i + 1 < STAGES.length ? (TOUCH ? 'タップ' : 'Enter') + ' で次のステージへ' : (TOUCH ? 'タップ' : 'Enter') + ' でエンディングへ', W / 2, H / 2 + 112, 16, '#b8c4e8', 'center');
   }
   if (mode === 'end') {
     panel(260);
@@ -1289,7 +1329,7 @@ function draw() {
     const tt = ts.reduce((a, s) => a + s.time, 0), td = ts.reduce((a, s) => a + s.deaths, 0);
     const tg = ts.reduce((a, s) => a + s.got, 0), ta = ts.reduce((a, s) => a + s.all, 0);
     txt(`合計タイム ${fmt(tt)}`, W / 2, H / 2 - 30, 20, '#fff', 'center');
-    txt(`ニンジン ${tg}/${ta}　ミス ${td}`, W / 2, H / 2 + 5, 20, '#fff', 'center');
+    txt(`コイン ${tg}/${ta}　ミス ${td}`, W / 2, H / 2 + 5, 20, '#fff', 'center');
     txt('カメとウサギ、ナイスコンビ！', W / 2, H / 2 + 45, 18, '#ffd1e0', 'center');
     if (!FEATURES.combo) txt('次回、ふたりの必殺技が追加されるかも…？', W / 2, H / 2 + 75, 15, '#ffd27a', 'center');
     txt((TOUCH ? 'タップ' : 'Enter') + ' でタイトルへ', W / 2, H / 2 + 105, 16, '#b8c4e8', 'center');
