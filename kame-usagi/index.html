@@ -81,7 +81,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/16-a'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/16-b'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 const FONT = '"Hiragino Maru Gothic ProN","Hiragino Sans","Yu Gothic",sans-serif';
 
 // ===================== キャラ設定（能力を足すときはここ） =====================
@@ -362,43 +362,82 @@ const Music = (() => {
       lim.threshold.value = -12; lim.knee.value = 6; lim.ratio.value = 12; lim.attack.value = 0.003; lim.release.value = 0.15;
       const g = off.createGain(); g.gain.value = VOL; g.connect(lim); lim.connect(off.destination);
       X = off; D = g;
-      try { draw(); } finally { X = null; D = null; }
+      try { draw(g); } finally { X = null; D = null; }
       off.oncomplete = e => resolve(e.renderedBuffer);
       const r = off.startRendering(); if (r && r.then) r.then(resolve, reject);
     }).then(buf => toWavUrl(buf.getChannelData(0)));
     return cache[key];
   }
+  // BGMファイル＝曲を何周か（30秒以上）＋つなぎ用のしっぽ。
+  // 頭は少しずつ大きく・しっぽは少しずつ小さくして、次のファイルと重ねてバトンタッチする（つなぎ目を消すため）
+  const XFADE = 0.15;
+  function bgmInfo(b) {
+    const song = build(b), sd = 60 / song.bpm / 2, one = song.mel.length * sd;
+    const loops = Math.max(1, Math.ceil(30 / one));
+    return { song, sd, loops, loopEnd: loops * one };
+  }
   const bgmUrl = b => {
-    const song = build(b), sd = 60 / song.bpm / 2;
-    return renderUrl(JSON.stringify(b), song.mel.length * sd, () => { for (let i = 0; i < song.mel.length; i++) playStep(song, i, i * sd, sd); });
+    const { song, sd, loops, loopEnd } = bgmInfo(b);
+    const steps = loops * song.mel.length + Math.ceil(XFADE / sd) + 1;
+    return renderUrl(JSON.stringify(b), loopEnd + XFADE + 0.05, g => {
+      g.gain.setValueAtTime(0, 0); g.gain.linearRampToValueAtTime(VOL, XFADE);
+      g.gain.setValueAtTime(VOL, loopEnd); g.gain.linearRampToValueAtTime(0, loopEnd + XFADE);
+      for (let i = 0; i < steps; i++) playStep(song, i % song.mel.length, i * sd, sd);
+    });
   };
   const sfxUrl = name => renderUrl('sfx:' + name, SFX[name][0], () => SFX[name][1](0.01));
 
   // 再生する<audio>。効果音は重なっても鳴るように2つずつ
   const silent = toWavUrl(new Float32Array(SR / 20));
-  const bgmEl = new Audio(silent); bgmEl.loop = true;
+  // BGMは2つのプレイヤーで交互に鳴らす（終わる直前に次を鳴らし始めて重ねる）
+  const bgmEls = [new Audio(silent), new Audio(silent)];
+  let bgmI = 0, loopEnd = 0, lead = 0.03, handed = false;
+  const bgmEl = () => bgmEls[bgmI];
   const fxEls = {};
   for (const name of Object.keys(SFX)) {
     fxEls[name] = [new Audio(silent), new Audio(silent)]; fxEls[name].i = 0;
     sfxUrl(name).then(url => fxEls[name].forEach(el => { el.src = url; })).catch(() => {});
   }
-  const allEls = () => [bgmEl, ...Object.values(fxEls).flat()];
+  const allEls = () => [...bgmEls, ...Object.values(fxEls).flat()];
   const playEl = el => { const p = el.play(); if (p && p.catch) p.catch(() => {}); };
 
   function start() {
     const my = ++token; cur = null;
-    bgmEl.pause();
+    bgmEls.forEach(el => el.pause());
     if (!unlocked || !want) return;
     const b = want; cur = b;
     bgmUrl(b).then(url => {
       if (my !== token) return; // 作っている間に別の曲に切り替わった
-      bgmEl.src = url; bgmEl.currentTime = 0; bgmEl.muted = muted; playEl(bgmEl);
+      loopEnd = bgmInfo(b).loopEnd; handed = false; bgmI = 0;
+      for (const el of bgmEls) { el.src = url; el.loop = false; el.muted = muted; }
+      bgmEl().currentTime = 0; playEl(bgmEl());
     }).catch(() => {});
   }
+  // バトンタッチの見張り（画面の書き換えごとに確認）
+  function watch() {
+    requestAnimationFrame(watch);
+    const a = bgmEl();
+    if (!cur || cur !== want || a.paused || !loopEnd) return;
+    if (!handed && a.currentTime >= loopEnd - lead) {
+      handed = true;
+      const nx = bgmEls[1 - bgmI];
+      nx.currentTime = 0; nx.muted = muted;
+      const p = nx.play();
+      const sync = () => {
+        // 鳴り始めた時のズレを測って、次のバトンタッチの前倒し量を補正する
+        const err = (a.currentTime - loopEnd) - nx.currentTime;
+        if (isFinite(err) && Math.abs(err) < 0.3) lead = Math.max(0, Math.min(0.15, lead + err * 0.7));
+      };
+      if (p && p.then) p.then(sync, () => {});
+      bgmI = 1 - bgmI;
+      setTimeout(() => { if (bgmEls[1 - bgmI] === a) { a.pause(); a.currentTime = 0; } handed = false; }, (XFADE + 0.3) * 1000);
+    }
+  }
+  requestAnimationFrame(watch);
   // タブを裏に回したら止める・戻ったら再開
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) bgmEl.pause();
-    else if (unlocked && want && cur === want && bgmEl.paused) playEl(bgmEl);
+    if (document.hidden) bgmEls.forEach(el => el.pause());
+    else if (unlocked && want && cur === want && bgmEl().paused) playEl(bgmEl());
   });
 
   return {
@@ -410,11 +449,11 @@ const Music = (() => {
         for (const el of allEls()) {
           el.muted = true;
           const p = el.play();
-          const done = () => { if (el !== bgmEl || !want) { el.pause(); el.currentTime = 0; } el.muted = muted; };
+          const done = () => { if (el !== bgmEl() || !want) { el.pause(); el.currentTime = 0; } el.muted = muted; };
           if (p && p.then) p.then(done, () => { el.muted = muted; }); else done();
         }
         if (want) start();
-      } else if (want && cur === want && bgmEl.paused && !document.hidden) playEl(bgmEl);
+      } else if (want && cur === want && bgmEl().paused && !document.hidden) playEl(bgmEl());
     },
     play(b) { if (want === b && cur === b) return; want = b; start(); },
     stop() { want = null; start(); },
@@ -429,7 +468,7 @@ const Music = (() => {
       try { localStorage.setItem('kameusagi-mute', muted ? '1' : '0'); } catch (e) {}
     },
     get muted() { return muted; },
-    _debug() { return { unlocked, bgm: bgmEl.src.slice(0, 20), paused: bgmEl.paused, fx: Object.keys(fxEls).map(k => k + ':' + fxEls[k][0].src.slice(0, 10)).join(',') }; },
+    _debug() { return { unlocked, bgmI, t: +bgmEl().currentTime.toFixed(3), loopEnd: +loopEnd.toFixed(3), lead: +lead.toFixed(3), bgm: bgmEl().src.slice(0, 20), paused: bgmEl().paused, fx: Object.keys(fxEls).map(k => k + ':' + fxEls[k][0].src.slice(0, 10)).join(',') }; },
   };
 })();
 const TITLE_BGM = { song: 'sougen', bpm: 116, drums: false };
