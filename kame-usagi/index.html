@@ -32,6 +32,11 @@
   #guard{background:rgba(120,210,255,0.25);border-color:rgba(160,225,255,0.8);}
   #sys{position:absolute;display:flex;gap:8px;}
   #sys .btn{position:static;width:40px;height:40px;font-size:17px;}
+  /* ♪ボタン：音ありは色つき・消音は薄いグレー */
+  #b-mute.sound-on{background:rgba(255,200,80,0.45);border-color:#ffd27a;color:#fff;}
+  #b-mute.sound-off{opacity:0.45;}
+  /* 一時停止ボタンの２本線（文字だと端末によって化けるので図形で描く） */
+  #b-pause .bar{display:inline-block;width:4px;height:14px;background:#fff;margin:0 2px;border-radius:1px;}
 
   /* 縦持ち：上にゲーム画面、下にボタン */
   @media (orientation:portrait){
@@ -69,7 +74,7 @@
 <body>
 <canvas id="c" width="960" height="520"></canvas>
 <div id="pad">
-  <div id="sys"><div class="btn" id="b-restart">↺</div><div class="btn" id="b-mute">♪</div><div class="btn" id="b-menu">≡</div></div>
+  <div id="sys"><div class="btn" id="b-pause"><span class="bar"></span><span class="bar"></span></div><div class="btn" id="b-restart">↺</div><div class="btn" id="b-mute">♪</div><div class="btn" id="b-menu">≡</div></div>
   <div id="rotate">横向きにすると画面が大きくなるよ</div>
   <div id="dpad"><div class="btn" id="b-left">◀</div><div class="btn" id="b-right">▶</div></div>
   <div class="btn" id="guard">ガード</div>
@@ -81,7 +86,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/16-g'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/16-h'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
@@ -250,7 +255,7 @@ const Music = (() => {
   // 72%が無音の細切れになっていた）。<audio> の再生なら録画にも普通に入る。
   const SR = 44100, VOL = 0.35;
   let X = null, D = null, noiseBuf = null;
-  let want = null, cur = null, token = 0, unlocked = false, muted = false;
+  let want = null, cur = null, token = 0, unlocked = false, muted = false, held = false; // held＝一時停止中
   const cache = {};
   try { muted = localStorage.getItem('kameusagi-mute') === '1'; } catch (e) {}
   const SEMI = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -427,7 +432,7 @@ const Music = (() => {
     if (document.hidden) bgmEls.forEach(el => el.pause());
     else {
       if (ac && ac.state !== 'running') ac.resume();
-      if (unlocked && want && cur === want && bgmEl().paused) playEl(bgmEl());
+      if (unlocked && !held && want && cur === want && bgmEl().paused) playEl(bgmEl());
     }
   });
 
@@ -451,7 +456,7 @@ const Music = (() => {
           if (p && p.then) p.then(done, () => { el.muted = muted; }); else done();
         }
         if (want) start();
-      } else if (want && cur === want && bgmEl().paused && !document.hidden) playEl(bgmEl());
+      } else if (!held && want && cur === want && bgmEl().paused && !document.hidden) playEl(bgmEl());
     },
     play(b) { if (want === b && cur === b) return; want = b; start(); },
     stop() { want = null; start(); },
@@ -464,6 +469,12 @@ const Music = (() => {
     toggleMute() {
       muted = !muted; for (const el of allEls()) el.muted = muted;
       try { localStorage.setItem('kameusagi-mute', muted ? '1' : '0'); } catch (e) {}
+    },
+    // 一時停止：BGMを止める／再開する
+    hold(on) {
+      held = on;
+      if (on) bgmEls.forEach(el => el.pause());
+      else if (unlocked && want && cur === want && bgmEl().paused && !document.hidden) playEl(bgmEl());
     },
     get muted() { return muted; },
     _debug() { return { unlocked, bgmI, t: +bgmEl().currentTime.toFixed(3), loopEnd: +loopEnd.toFixed(3), lead: +lead.toFixed(3), bgm: bgmEl().src.slice(0, 20), paused: bgmEl().paused, fx: Object.keys(sfxBuf).join(','), ac: ac ? ac.state : 'none' }; },
@@ -509,9 +520,12 @@ if (TOUCH) {
   dpad.addEventListener('pointerup', dpadOff); dpad.addEventListener('pointercancel', dpadOff);
   // 1回押すボタン
   const tap = (el, fn) => el.addEventListener('pointerdown', e => { e.preventDefault(); Music.unlock(); fn(); });
-  tap($('b-restart'), () => { if (mode === 'play') pressed.KeyR = true; });
-  tap($('b-mute'), () => Music.toggleMute());
-  tap($('b-menu'), () => { if (mode !== 'title') mode = 'title'; });
+  tap($('b-pause'), () => { if (mode === 'play') pauseGame(); else if (mode === 'pause') resumeGame(); });
+  tap($('b-restart'), () => { if (mode === 'play' || mode === 'pause') pressed.KeyR = true; });
+  const syncMute = () => { $('b-mute').classList.toggle('sound-on', !Music.muted); $('b-mute').classList.toggle('sound-off', Music.muted); };
+  syncMute();
+  tap($('b-mute'), () => { Music.toggleMute(); syncMute(); });
+  tap($('b-menu'), () => { if (mode !== 'title') { Music.hold(false); mode = 'title'; } });
   // 画面タップ＝決定（スタート・次のステージへ）
   // iPhoneのダブルタップ拡大・ピンチ拡大を止める（ボタンの連打でズームしないように）
   // ※ボタン操作はpointerイベントで受けているので、touchを止めても操作には影響しない
@@ -825,6 +839,12 @@ function stageClear() {
   burst(st.goal.x + 16, st.goal.gy + 20, '#ffe14d', 40, 5);
 }
 
+// ===================== 一時停止 =====================
+function pauseGame() { if (mode !== 'play') return; mode = 'pause'; Music.hold(true); }
+function resumeGame() { if (mode !== 'pause') return; mode = 'play'; Music.hold(false); }
+// タブを切り替えた・電話が来たなどで画面が隠れたら自動で一時停止
+document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+
 // ===================== メインループ =====================
 function step() {
   if (mode === 'title') {
@@ -835,6 +855,12 @@ function step() {
     Music.play(st.S.bgm);
     if (--modeTimer <= 0 || pOK()) mode = 'play';
     updateWorld();
+  } else if (mode === 'pause') {
+    if (pressed.KeyR) { Music.hold(false); const keep = totalStats; loadStage(st.i); totalStats = keep; mode = 'play'; }
+    else if (pressed.Escape) { Music.hold(false); mode = 'title'; }
+    else if (pOK() || pressed.KeyP) resumeGame();
+  } else if (mode === 'play' && pressed.KeyP) {
+    pauseGame();
   } else if (mode === 'play') {
     Music.play(st.S.bgm);
     if (pressed.KeyR) { const keep = totalStats; loadStage(st.i); totalStats = keep; mode = 'play'; }
@@ -1140,7 +1166,7 @@ function drawHUD() {
   // 下（スマホはボタンがあるので出さない）
   if (TOUCH) return;
   ctx.fillStyle = 'rgba(20,24,40,0.55)'; rr(W / 2 - 330, H - 34, 660, 26, 13); ctx.fill();
-  txt('←→移動　↑/スペース ジャンプ　Shift/X 交代　↓ 甲羅ガード　R やり直し　M 音' + (Music.muted ? 'OFF' : 'ON') + '　Esc タイトル', W / 2, H - 21, 12.5, '#e8ecf8', 'center', 'normal');
+  txt('←→移動　↑/スペース ジャンプ　Shift/X 交代　↓ 甲羅ガード　P 一時停止　R やり直し　M 音' + (Music.muted ? 'OFF' : 'ON') + '　Esc タイトル', W / 2, H - 21, 12.5, '#e8ecf8', 'center', 'normal', 640);
 }
 
 // テスト版：タイトル上部のステージ選びボタン
@@ -1186,6 +1212,13 @@ function draw() {
   }
   drawWorld();
   drawHUD();
+  if (mode === 'pause') {
+    ctx.fillStyle = 'rgba(10,12,24,0.35)'; ctx.fillRect(0, 0, W, H);
+    panel(170);
+    outlined('一時停止', W / 2, H / 2 - 45, 40, '#fff');
+    txt(TOUCH ? 'タップでつづける' : 'P／Enter でつづける', W / 2, H / 2 + 10, 18, '#fff', 'center');
+    txt(TOUCH ? '↺ やり直し　≡ タイトルへ' : 'R やり直し　Esc タイトルへ', W / 2, H / 2 + 45, 15, '#b8c4e8', 'center');
+  }
   if (mode === 'intro') {
     panel(120);
     outlined(st.S.name, W / 2, H / 2 - 18, 32, '#ffe08a');
