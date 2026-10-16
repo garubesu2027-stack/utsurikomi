@@ -81,7 +81,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/16-f'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/16-g'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
@@ -340,7 +340,7 @@ const Music = (() => {
     for (let i = 0; i < n; i++) { const x = Math.max(-1, Math.min(1, d[i])); v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true); }
     return URL.createObjectURL(new Blob([ab], { type: 'audio/wav' }));
   }
-  function renderUrl(key, len, draw) {
+  function renderBuf(key, len, draw) {
     if (!cache[key]) cache[key] = new Promise((resolve, reject) => {
       const O = window.OfflineAudioContext || window.webkitOfflineAudioContext;
       if (!O) return reject(new Error('no audio'));
@@ -353,9 +353,11 @@ const Music = (() => {
       try { draw(g); } finally { X = null; D = null; }
       off.oncomplete = e => resolve(e.renderedBuffer);
       const r = off.startRendering(); if (r && r.then) r.then(resolve, reject);
-    }).then(buf => toWavUrl(buf.getChannelData(0)));
+    });
     return cache[key];
   }
+  const urlCache = {};
+  const renderUrl = (key, len, draw) => urlCache[key] || (urlCache[key] = renderBuf(key, len, draw).then(buf => toWavUrl(buf.getChannelData(0))));
   // BGMファイル＝曲を何周か（30秒以上）＋つなぎ用のしっぽ。
   // 頭は少しずつ大きく・しっぽは少しずつ小さくして、次のファイルと重ねてバトンタッチする（つなぎ目を消すため）
   const XFADE = 0.15;
@@ -373,7 +375,10 @@ const Music = (() => {
       for (let i = 0; i < steps; i++) playStep(song, i % song.mel.length, i * sd, sd);
     });
   };
-  const sfxUrl = name => renderUrl('sfx:' + name, SFX[name][0], () => SFX[name][1](0.01));
+  // 効果音は WebAudio で鳴らす（<audio> を毎回頭に戻して鳴らす方式は iPhone で重く、ゲームがカクついたため・10/16）
+  const sfxBuf = {};
+  for (const name of Object.keys(SFX)) renderBuf('sfx:' + name, SFX[name][0], () => SFX[name][1](0.01)).then(b => { sfxBuf[name] = b; }).catch(() => {});
+  let ac = null;
 
   // 再生する<audio>。効果音は重なっても鳴るように2つずつ
   const silent = toWavUrl(new Float32Array(SR / 20));
@@ -381,13 +386,7 @@ const Music = (() => {
   const bgmEls = [new Audio(silent), new Audio(silent)];
   let bgmI = 0, loopEnd = 0, lead = 0.03, handed = false;
   const bgmEl = () => bgmEls[bgmI];
-  const fxEls = {};
-  for (const name of Object.keys(SFX)) {
-    const many = ['jump', 'carrot', 'block', 'stomp'].includes(name) ? 3 : 2; // よく連続する音は多めに
-    fxEls[name] = Array.from({ length: many }, () => new Audio(silent)); fxEls[name].i = 0;
-    sfxUrl(name).then(url => fxEls[name].forEach(el => { el.src = url; })).catch(() => {});
-  }
-  const allEls = () => [...bgmEls, ...Object.values(fxEls).flat()];
+  const allEls = () => bgmEls;
   const playEl = el => { const p = el.play(); if (p && p.catch) p.catch(() => {}); };
 
   function start() {
@@ -426,12 +425,22 @@ const Music = (() => {
   // タブを裏に回したら止める・戻ったら再開
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) bgmEls.forEach(el => el.pause());
-    else if (unlocked && want && cur === want && bgmEl().paused) playEl(bgmEl());
+    else {
+      if (ac && ac.state !== 'running') ac.resume();
+      if (unlocked && want && cur === want && bgmEl().paused) playEl(bgmEl());
+    }
   });
 
   return {
     // キー入力・タップのタイミングで呼ぶ（スマホは操作の中でないと音の再生を許してくれない）
     unlock() {
+      if (!ac) {
+        // 音の扱いを「動画・音楽の再生」と同じにしておく（Safari。録画にも入りやすくなる）
+        try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+        const A = window.AudioContext || window.webkitAudioContext;
+        if (A) { try { ac = new A(); } catch (e) {} }
+      }
+      if (ac && ac.state !== 'running') ac.resume();
       if (!unlocked) {
         unlocked = true;
         // 全部の<audio>を一度だけ無音で鳴らして、あとから自由に鳴らせるようにする
@@ -447,9 +456,9 @@ const Music = (() => {
     play(b) { if (want === b && cur === b) return; want = b; start(); },
     stop() { want = null; start(); },
     sfx(name) {
-      if (!unlocked || !fxEls[name]) return;
-      const pool = fxEls[name], el = pool[pool.i++ % pool.length];
-      el.currentTime = 0; el.muted = muted; playEl(el);
+      if (!ac || muted || !sfxBuf[name]) return;
+      const src = ac.createBufferSource(); src.buffer = sfxBuf[name];
+      src.connect(ac.destination); src.start();
     },
     jingle(name) { this.stop(); this.sfx(name); },
     toggleMute() {
@@ -457,7 +466,7 @@ const Music = (() => {
       try { localStorage.setItem('kameusagi-mute', muted ? '1' : '0'); } catch (e) {}
     },
     get muted() { return muted; },
-    _debug() { return { unlocked, bgmI, t: +bgmEl().currentTime.toFixed(3), loopEnd: +loopEnd.toFixed(3), lead: +lead.toFixed(3), bgm: bgmEl().src.slice(0, 20), paused: bgmEl().paused, fx: Object.keys(fxEls).map(k => k + ':' + fxEls[k][0].src.slice(0, 10)).join(',') }; },
+    _debug() { return { unlocked, bgmI, t: +bgmEl().currentTime.toFixed(3), loopEnd: +loopEnd.toFixed(3), lead: +lead.toFixed(3), bgm: bgmEl().src.slice(0, 20), paused: bgmEl().paused, fx: Object.keys(sfxBuf).join(','), ac: ac ? ac.state : 'none' }; },
   };
 })();
 const TITLE_BGM = { song: 'sougen', bpm: 116, drums: false };
@@ -609,7 +618,7 @@ function guardHit() { st.flash = 6; Music.sfx('block'); if (FEATURES.combo && p.
 function popup(t, color) { st.popups.push({ x: p.x + 15, y: p.y - 24, t, color, life: 60 }); }
 
 function killPlayer() {
-  if (p.dead || p.inv > 0) return;
+  if (p.dead || p.inv > 0 || mode !== 'play') return; // ゴール後などは無敵
   p.dead = 50; st.deaths++; Music.sfx('miss');
   burst(p.x + 15, p.y + 16, p.char === 'kame' ? '#3f9b4f' : '#ffffff', 24, 4);
 }
@@ -789,7 +798,7 @@ function updateWorld() {
       const ahead = Math.floor((e.vx > 0 ? e.x + e.w + 2 : e.x - 2) / T);
       if (!isSolid(ahead, Math.floor((e.y + e.h + 2) / T))) e.vx *= -1;
     }
-    if (!p.dead && overlap(e, p)) {
+    if (!p.dead && mode === 'play' && overlap(e, p)) {
       if (p.vy > 0 && p.y + p.h - e.y < 16) {
         e.dead = 1; e.vy = -4; e.vx = 0; p.vy = -8; burst(e.x + 15, e.y + 10, '#8a4b2a', 12, 3); Music.sfx('stomp');
       } else if (guarded()) {
