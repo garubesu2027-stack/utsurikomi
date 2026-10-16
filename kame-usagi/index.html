@@ -74,7 +74,7 @@
 <body>
 <canvas id="c" width="960" height="520"></canvas>
 <div id="pad">
-  <div id="sys"><div class="btn" id="b-pause"><span class="bar"></span><span class="bar"></span></div><div class="btn" id="b-restart">↺</div><div class="btn" id="b-mute">♪</div><div class="btn" id="b-menu">≡</div></div>
+  <div id="sys"><div class="btn" id="b-pause"><span class="bar"></span><span class="bar"></span></div><div class="btn" id="b-mute">♪</div></div>
   <div id="rotate">横向きにすると画面が大きくなるよ</div>
   <div id="dpad"><div class="btn" id="b-left">◀</div><div class="btn" id="b-right">▶</div></div>
   <div class="btn" id="guard">ガード</div>
@@ -86,7 +86,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/17-a'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/17-b'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
@@ -521,11 +521,9 @@ if (TOUCH) {
   // 1回押すボタン
   const tap = (el, fn) => el.addEventListener('pointerdown', e => { e.preventDefault(); Music.unlock(); fn(); });
   tap($('b-pause'), () => { if (mode === 'play') pauseGame(); else if (mode === 'pause') resumeGame(); });
-  tap($('b-restart'), () => { if (mode === 'play' || mode === 'pause') pressed.KeyR = true; });
   const syncMute = () => { $('b-mute').classList.toggle('sound-on', !Music.muted); $('b-mute').classList.toggle('sound-off', Music.muted); };
   syncMute();
   tap($('b-mute'), () => { Music.toggleMute(); syncMute(); });
-  tap($('b-menu'), () => { if (mode !== 'title') { Music.hold(false); mode = 'title'; } });
   // 画面タップ＝決定（スタート・次のステージへ）
   // iPhoneのダブルタップ拡大・ピンチ拡大を止める（ボタンの連打でズームしないように）
   // ※ボタン操作はpointerイベントで受けているので、touchを止めても操作には影響しない
@@ -1222,8 +1220,19 @@ cv.addEventListener('pointerdown', e => {
   const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
   const hit = b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
   if (mode === 'title') for (const b of stageButtons()) if (b.open && hit(b)) { totalStats = []; loadStage(b.stage); return; }
+  if (mode === 'pause') { for (const b of pauseButtons()) if (hit(b)) pressed[b.key] = true; return; } // 一時停止中はボタンだけ反応（押し間違い防止）
   if (TOUCH) { setKey('Enter', true); setTimeout(() => setKey('Enter', false), 50); }
 });
+
+// 一時停止画面のボタン（押すと対応するキーを押したことにする）
+function pauseButtons() {
+  const bw = 240, bh = 44, x = W / 2 - bw / 2;
+  return [
+    { x, y: H / 2 - 52, w: bw, h: bh, label: 'つづける', key: 'KeyP', main: true },
+    { x, y: H / 2 + 2, w: bw, h: bh, label: '最初から', key: 'KeyR' },
+    { x, y: H / 2 + 56, w: bw, h: bh, label: 'タイトルへ', key: 'Escape' },
+  ];
+}
 
 function panel(h) { ctx.fillStyle = 'rgba(20,24,40,0.82)'; rr(W / 2 - 280, H / 2 - h / 2, 560, h, 18); ctx.fill(); }
 
@@ -1253,10 +1262,14 @@ function draw() {
   drawHUD();
   if (mode === 'pause') {
     ctx.fillStyle = 'rgba(10,12,24,0.35)'; ctx.fillRect(0, 0, W, H);
-    panel(170);
-    outlined('一時停止', W / 2, H / 2 - 45, 40, '#fff');
-    txt(TOUCH ? 'タップでつづける' : 'P／Enter でつづける', W / 2, H / 2 + 10, 18, '#fff', 'center');
-    txt(TOUCH ? '↺ やり直し　≡ タイトルへ' : 'R やり直し　Esc タイトルへ', W / 2, H / 2 + 45, 15, '#b8c4e8', 'center');
+    panel(290);
+    outlined('一時停止', W / 2, H / 2 - 95, 36, '#fff');
+    for (const b of pauseButtons()) {
+      ctx.fillStyle = b.main ? 'rgba(255,200,80,0.35)' : 'rgba(255,255,255,0.1)'; rr(b.x, b.y, b.w, b.h, 22); ctx.fill();
+      ctx.strokeStyle = b.main ? '#ffd27a' : 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
+      txt(b.label, W / 2, b.y + b.h / 2, 19, '#fff', 'center');
+    }
+    if (!TOUCH) txt('P つづける　R 最初から　Esc タイトルへ', W / 2, H / 2 + 125, 13, '#b8c4e8', 'center');
   }
   if (mode === 'intro') {
     panel(120);
