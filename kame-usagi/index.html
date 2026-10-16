@@ -81,7 +81,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/16-c'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/16-e'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
@@ -106,7 +106,7 @@ const CHARS = {
 
 // ===================== ステージ（地図の記号） =====================
 // #=地面 ==石 ^=トゲ C=崩れる橋（カメが乗ると落ちる） V=落石装置 A=矢（左向き） D=矢（右向き）
-// X=ひび割れブロック（甲羅アタックで壊れる） B=押せる箱 E=敵 *=ニンジン K=中間地点 P=スタート G=ゴール
+// X=ひび割れブロック（甲羅アタックで壊れる） F=ニセモノのゴール（触るとはじかれる。飛び越えるしかない） B=押せる箱 E=敵 *=ニンジン K=中間地点 P=スタート G=ゴール
 const STAGES = [
   {
     name: 'ステージ1　はじめの草原', start: 'kame', bgm: { song: 'sougen', bpm: 140 },
@@ -516,20 +516,22 @@ function loadStage(i) {
   st = {
     i, S, w, h: base.length, base, tiles: null,
     spawnsBox: [], spawnsEnemy: [], carrots: [], checkpoints: [], goal: null,
-    shooters: [], droppers: [],
+    shooters: [], droppers: [], fakes: [],
     boxes: [], enemies: [], rocks: [], arrows: [], particles: [], popups: [], crumble: {},
     time: 0, deaths: 0, got: 0, spawn: null, flash: 0,
   };
   for (let y = 0; y < st.h; y++) for (let x = 0; x < w; x++) {
     const c = base[y][x];
     const px = x * T, py = y * T;
-    if ('PBEK*G'.includes(c)) base[y][x] = ' ';
+    if ('PBEK*GF'.includes(c)) base[y][x] = ' ';
+    if (c === 'F') st.fakes.push({ x: px + 4, y: py - 80, w: 32, h: 120, open: false });
     if (c === 'P') st.spawn = { x: px + 5, y: py + T - 32, char: S.start };
     if (c === 'B') st.spawnsBox.push({ x: px, y: py });
     if (c === 'E') st.spawnsEnemy.push({ x: px + 5, y: py + 12 });
     if (c === 'K') st.checkpoints.push({ x: px + 8, y: py - 30, w: 24, h: 70, on: false });
     if (c === '*') st.carrots.push({ x: px + 10, y: py + 8, w: 20, h: 24, got: false });
-    if (c === 'G') st.goal = { x: px + 4, y: py - 80, w: 32, h: 120 };
+    // ゴールの当たり判定は空の上まで（ウサギが旗を飛び越えてもクリア）。見た目の旗の位置は gy で別に持つ
+    if (c === 'G') st.goal = { x: px + 4, y: -200, w: 32, h: py + T + 200, gy: py - 80 };
     if (c === 'A' || c === 'D') st.shooters.push({ tx: x, ty: y, dir: c === 'A' ? -1 : 1, t: (x * 23) % 110 });
     if (c === 'V') st.droppers.push({ tx: x, ty: y, t: (x * 37) % 120 });
   }
@@ -702,6 +704,14 @@ function updatePlayer() {
     st.spawn = { x: k.x - 3, y: k.y + 70 - 32 - 2, char: p.char };
     burst(k.x + 12, k.y + 10, '#ffe14d', 14, 3);
   }
+  // ニセモノのゴール：触ると正体を出してはじき返す（当たり判定は旗の高さまで＝ウサギなら飛び越えられる）
+  for (const f of st.fakes) if (overlap(p, f)) {
+    const dir = p.x + p.w / 2 < f.x + f.w / 2 ? -1 : 1;
+    p.vx = dir * 6; p.vy = -6; p.roll = 0; p.x = dir < 0 ? f.x - p.w - 1 : f.x + f.w + 1;
+    st.flash = 6; burst(f.x + 16, p.y + 16, '#b05cff', 16, 3.5);
+    popup(f.open ? 'ニセモノだってば！' : 'ニセモノだよ〜ん！ ウサギで飛び越えて！', '#d9a3ff');
+    f.open = true;
+  }
   if (st.goal && overlap(p, st.goal)) stageClear();
 }
 
@@ -794,8 +804,8 @@ function stageClear() {
   Music.jingle('clear');
   const key = 's' + st.i;
   if (!best[key] || st.time < best[key]) { best[key] = st.time; st.newBest = true; saveBest(); }
-  totalStats.push({ time: st.time, deaths: st.deaths, got: st.got, all: st.carrots.length });
-  burst(st.goal.x + 16, st.goal.y + 20, '#ffe14d', 40, 5);
+  (totalStats = totalStats || []).push({ time: st.time, deaths: st.deaths, got: st.got, all: st.carrots.length });
+  burst(st.goal.x + 16, st.goal.gy + 20, '#ffe14d', 40, 5);
 }
 
 // ===================== メインループ =====================
@@ -1005,12 +1015,27 @@ function drawWorld() {
   }
   // ゴール
   if (st.goal) {
-    const gx = st.goal.x - cam, gy = st.goal.y;
+    const gx = st.goal.x - cam, gy = st.goal.gy;
     ctx.fillStyle = '#eee'; ctx.fillRect(gx + 14, gy, 5, 120);
     ctx.fillStyle = '#ffcf33'; ctx.beginPath(); ctx.arc(gx + 16, gy, 6, 0, 7); ctx.fill();
     const wave = Math.sin(st.time * 0.1) * 3;
     ctx.fillStyle = '#e8473c'; ctx.beginPath(); ctx.moveTo(gx + 19, gy + 6); ctx.lineTo(gx + 62, gy + 18 + wave); ctx.lineTo(gx + 19, gy + 32); ctx.fill();
     outlined('GOAL', gx + 17, gy - 16, 16, '#fff');
+  }
+  // ニセモノのゴール（正体を出すまでは本物そっくり）
+  for (const f of st.fakes) {
+    const gx = f.x - cam, gy = f.y;
+    if (gx < -80 || gx > W + 80) continue;
+    const wave = Math.sin(st.time * 0.1) * 3;
+    ctx.fillStyle = '#eee'; ctx.fillRect(gx + 14, gy, 5, 120);
+    ctx.fillStyle = f.open ? '#b05cff' : '#ffcf33'; ctx.beginPath(); ctx.arc(gx + 16, gy, 6, 0, 7); ctx.fill();
+    ctx.fillStyle = f.open ? '#7b3fc4' : '#e8473c';
+    ctx.beginPath(); ctx.moveTo(gx + 19, gy + 6); ctx.lineTo(gx + 62, gy + 18 + wave); ctx.lineTo(gx + 19, gy + 32); ctx.fill();
+    if (f.open) {
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(gx + 28, gy + 15, 3, 0, 7); ctx.arc(gx + 38, gy + 17, 3, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(gx + 33, gy + 21, 6, 0.2, Math.PI - 0.2); ctx.stroke();
+      outlined('ニセ!', gx + 17, gy - 16, 16, '#e2c2ff');
+    } else outlined('GOAL', gx + 17, gy - 16, 16, '#fff');
   }
   // ニンジン
   for (const c of st.carrots) if (!c.got) {
