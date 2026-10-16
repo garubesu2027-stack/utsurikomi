@@ -81,7 +81,13 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/16-b'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/16-c'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+// 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
+const EDITION = 'public';
+const IS_TEST = EDITION === 'test';
+const FEATURES = {
+  combo: IS_TEST, // 切り替えコンボ（甲羅アタック・ロケットジャンプ）。公開するときは true にする
+};
 const FONT = '"Hiragino Maru Gothic ProN","Hiragino Sans","Yu Gothic",sans-serif';
 
 // ===================== キャラ設定（能力を足すときはここ） =====================
@@ -175,32 +181,6 @@ const STAGES = [
       '  P     E           K                A#########     E     E         * E     K         A#########',
       '###########CCCCCCCC######^^^^^^^^^^^#########################################CCCCCCCC###########',
       '###########        ##########################################################        ###########',
-    ],
-  },
-  {
-    name: 'ステージ4　コンボの塔', start: 'usagi', bgm: { song: 'sougen', bpm: 156, tr: 2 },
-    sky: ['#5fb3a8', '#d6f2e6'], hill: '#7cc4a0',
-    hints: [
-      { x: 2, y: 5, t: '【甲羅アタック】ウサギで全力ダッシュ中にカメへ交代！' },
-      { x: 13, y: 4, t: 'ひび割れブロックは甲羅アタックで壊せる' },
-      { x: 33, y: 5, t: '甲羅アタックは敵もまとめてはね飛ばす' },
-      { x: 38, y: 3, t: '【ロケットジャンプ】カメのガードで攻撃を受けた直後にウサギへ交代！' },
-      { x: 62, y: 4, t: '高いひび割れ壁。下だけ壊せば通れる' },
-    ],
-    map: [
-      '',
-      '',
-      '                                                *',
-      '                                                        *',
-      '',
-      '                                                         K',
-      '                                                    #########',
-      '                                        *           #########           X',
-      '          *     ===============                     #########           X       *',
-      '                           X                        #########     *     X',
-      '  P                   *    X     K   E  E  E        A########           X             G',
-      '############################################################################################',
-      '############################################################################################',
     ],
   },
 ];
@@ -615,7 +595,7 @@ function burst(x, y, color, n = 12, spd = 3) {
 
 // ===================== プレイヤー更新 =====================
 const guarded = () => p.shield || p.roll > 0;
-function guardHit() { st.flash = 6; if (p.char === 'kame') p.charge = COMBO.chargeTime; }
+function guardHit() { st.flash = 6; if (FEATURES.combo && p.char === 'kame') p.charge = COMBO.chargeTime; }
 function popup(t, color) { st.popups.push({ x: p.x + 15, y: p.y - 24, t, color, life: 60 }); }
 
 function killPlayer() {
@@ -636,11 +616,11 @@ function updatePlayer() {
     p.char = from === 'kame' ? 'usagi' : 'kame';
     p.swCd = 15; p.shield = false;
     const N = CHARS[p.char];
-    if (from === 'usagi' && Math.abs(p.vx) >= COMBO.rollMinSpeed) {
+    if (FEATURES.combo && from === 'usagi' && Math.abs(p.vx) >= COMBO.rollMinSpeed) {
       // 🐰→🐢 甲羅アタック：ダッシュの勢いのまま甲羅で突進
       p.roll = COMBO.rollTime; p.vx = Math.sign(p.vx) * COMBO.rollSpeed; p.face = Math.sign(p.vx);
       popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll');
-    } else if (from === 'kame' && p.charge > 0) {
+    } else if (FEATURES.combo && from === 'kame' && p.charge > 0) {
       // 🐢→🐰 ロケットジャンプ：ガードで受けた衝撃を使って大ジャンプ
       p.vy = -COMBO.rocketJump; p.rocket = true; p.charge = 0; p.roll = 0;
       popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket');
@@ -1121,6 +1101,20 @@ function drawHUD() {
   txt('←→移動　↑/スペース ジャンプ　Shift/X 交代　↓ 甲羅ガード　R やり直し　M 音' + (Music.muted ? 'OFF' : 'ON') + '　Esc タイトル', W / 2, H - 21, 12.5, '#e8ecf8', 'center', 'normal');
 }
 
+// テスト版：タイトル上部のステージ選びボタン
+function stageButtons() {
+  const n = STAGES.length, bw = 52, gap = 8, x0 = W / 2 - (n * bw + (n - 1) * gap) / 2;
+  return [{ x: x0 - 92, y: 14, w: 84, h: 40, label: 'TEST', stage: -1 }]
+    .concat(STAGES.map((s, i) => ({ x: x0 + i * (bw + gap), y: 14, w: bw, h: 40, label: 'S' + (i + 1), stage: i })));
+}
+if (IS_TEST) cv.addEventListener('pointerdown', e => {
+  if (mode !== 'title') return;
+  const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+  for (const b of stageButtons()) if (b.stage >= 0 && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+    Music.unlock(); totalStats = []; loadStage(b.stage); return;
+  }
+});
+
 function panel(h) { ctx.fillStyle = 'rgba(20,24,40,0.82)'; rr(W / 2 - 280, H / 2 - h / 2, 560, h, 18); ctx.fill(); }
 
 function draw() {
@@ -1136,7 +1130,14 @@ function draw() {
     txt('カメ＝守り　ウサギ＝ジャンプとスピード。交代しながらゴールを目指せ！', W / 2, 250, 17, '#2b2b3a', 'center', 'bold', W - 40);
     if (Math.floor(performance.now() / 500) % 2) outlined(TOUCH ? 'タップでスタート' : 'Enter／スペースでスタート', W / 2, 300, 24, '#fff');
     const bt = STAGES.map((s, i) => `${i + 1}：${best['s' + i] ? fmt(best['s' + i]) : '--'}`).join('　');
-    txt('ver ' + VERSION, W - 10, H - 12, 11, 'rgba(255,255,255,0.6)', 'right', 'normal');
+    txt((IS_TEST ? 'TEST ' : '') + 'ver ' + VERSION, W - 10, H - 12, 11, IS_TEST ? '#ffd27a' : 'rgba(255,255,255,0.6)', 'right', IS_TEST ? 'bold' : 'normal');
+    if (IS_TEST) {
+      for (const b of stageButtons()) {
+        ctx.fillStyle = 'rgba(20,24,40,0.75)'; rr(b.x, b.y, b.w, b.h, 10); ctx.fill();
+        ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 2; ctx.stroke();
+        txt(b.label, b.x + b.w / 2, b.y + b.h / 2, 16, '#fff', 'center');
+      }
+    }
     txt((TOUCH ? '' : '数字キーでステージ選択　M 音' + (Music.muted ? 'OFF' : 'ON') + '　') + 'ベスト ' + bt, W / 2, 490, 14, '#fff', 'center', 'normal', W - 40);
     return;
   }
@@ -1162,7 +1163,8 @@ function draw() {
     txt(`合計タイム ${fmt(tt)}`, W / 2, H / 2 - 30, 20, '#fff', 'center');
     txt(`ニンジン ${tg}/${ta}　ミス ${td}`, W / 2, H / 2 + 5, 20, '#fff', 'center');
     txt('カメとウサギ、ナイスコンビ！', W / 2, H / 2 + 45, 18, '#ffd1e0', 'center');
-    txt((TOUCH ? 'タップ' : 'Enter') + ' でタイトルへ', W / 2, H / 2 + 95, 16, '#b8c4e8', 'center');
+    if (!FEATURES.combo) txt('次回、ふたりの必殺技が追加されるかも…？', W / 2, H / 2 + 75, 15, '#ffd27a', 'center');
+    txt((TOUCH ? 'タップ' : 'Enter') + ' でタイトルへ', W / 2, H / 2 + 105, 16, '#b8c4e8', 'center');
   }
 }
 
