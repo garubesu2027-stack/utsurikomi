@@ -81,7 +81,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/16-e'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/16-f'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'test';
 const IS_TEST = EDITION === 'test';
@@ -367,6 +367,14 @@ const Music = (() => {
       kick(t); noise(t, 0.3, 0.25, 400);
     }],
     break: [0.35, t => { noise(t, 0.18, 0.35, 300); sweep(220, 60, t, 0.12, 'square', 0.1); }], // ガシャッ
+    // ふだんの動きの音
+    jump: [0.15, t => sweep(260, 620, t, 0.1, 'square', 0.06)],                                   // ピョッ
+    swap: [0.2, t => { tone(660, t, 0.06, 'square', 0.06); tone(990, t + 0.06, 0.09, 'square', 0.06); }], // ポコッ
+    carrot: [0.3, t => { tone(988, t, 0.07, 'square', 0.06); tone(1319, t + 0.07, 0.18, 'square', 0.06); }], // ピコーン
+    check: [0.45, t => { [784, 988, 1175].forEach((f, i) => tone(f, t + i * 0.08, 0.16, 'square', 0.06)); }], // 中間地点
+    block: [0.2, t => { tone(1760, t, 0.08, 'triangle', 0.14); noise(t, 0.05, 0.1, 4000); }],     // カキン（ガード）
+    stomp: [0.2, t => { sweep(400, 90, t, 0.12, 'square', 0.09); kick(t); }],                     // ふみっ
+    miss: [0.7, t => { sweep(600, 120, t, 0.5, 'square', 0.08); noise(t, 0.2, 0.12, 800); }],     // やられた
   };
   for (const name of Object.keys(JINGLES)) {
     const len = JINGLES[name].reduce((a, j) => a + j[1], 0) + 0.4;
@@ -426,7 +434,8 @@ const Music = (() => {
   const bgmEl = () => bgmEls[bgmI];
   const fxEls = {};
   for (const name of Object.keys(SFX)) {
-    fxEls[name] = [new Audio(silent), new Audio(silent)]; fxEls[name].i = 0;
+    const many = ['jump', 'carrot', 'block', 'stomp'].includes(name) ? 3 : 2; // よく連続する音は多めに
+    fxEls[name] = Array.from({ length: many }, () => new Audio(silent)); fxEls[name].i = 0;
     sfxUrl(name).then(url => fxEls[name].forEach(el => { el.src = url; })).catch(() => {});
   }
   const allEls = () => [...bgmEls, ...Object.values(fxEls).flat()];
@@ -546,7 +555,6 @@ if (TOUCH) {
   tap($('b-mute'), () => Music.toggleMute());
   tap($('b-menu'), () => { if (mode !== 'title') mode = 'title'; });
   // 画面タップ＝決定（スタート・次のステージへ）
-  cv.addEventListener('pointerdown', e => { e.preventDefault(); setKey('Enter', true); setTimeout(() => setKey('Enter', false), 50); });
   // iPhoneのダブルタップ拡大・ピンチ拡大を止める（ボタンの連打でズームしないように）
   // ※ボタン操作はpointerイベントで受けているので、touchを止めても操作には影響しない
   document.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
@@ -648,12 +656,12 @@ function burst(x, y, color, n = 12, spd = 3) {
 
 // ===================== プレイヤー更新 =====================
 const guarded = () => p.shield || p.roll > 0;
-function guardHit() { st.flash = 6; if (FEATURES.combo && p.char === 'kame') p.charge = COMBO.chargeTime; }
+function guardHit() { st.flash = 6; Music.sfx('block'); if (FEATURES.combo && p.char === 'kame') p.charge = COMBO.chargeTime; }
 function popup(t, color) { st.popups.push({ x: p.x + 15, y: p.y - 24, t, color, life: 60 }); }
 
 function killPlayer() {
   if (p.dead || p.inv > 0) return;
-  p.dead = 50; st.deaths++;
+  p.dead = 50; st.deaths++; Music.sfx('miss');
   burst(p.x + 15, p.y + 16, p.char === 'kame' ? '#3f9b4f' : '#ffffff', 24, 4);
 }
 
@@ -679,7 +687,7 @@ function updatePlayer() {
       popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket');
       burst(p.x + 15, p.y + 30, '#ffb347', 24, 4);
     } else {
-      p.roll = 0;
+      p.roll = 0; Music.sfx('swap');
       p.vx = Math.max(-N.speed, Math.min(N.speed, p.vx));
     }
     burst(p.x + 15, p.y + 16, '#fff6c8', 16, 3);
@@ -710,7 +718,7 @@ function updatePlayer() {
   if (pJump()) p.jbuf = 7; else if (p.jbuf > 0) p.jbuf--;
   if (p.onGround) p.coyote = 6; else if (p.coyote > 0) p.coyote--;
   if (p.jbuf > 0 && p.coyote > 0 && !p.shield && !p.roll) {
-    p.vy = -N.jump; p.jbuf = 0; p.coyote = 0;
+    p.vy = -N.jump; p.jbuf = 0; p.coyote = 0; Music.sfx('jump');
   }
   if (!kJumpHeld() && p.vy < -3 && !p.rocket) p.vy *= 0.85;
   if (p.vy >= 0) p.rocket = false;
@@ -749,9 +757,9 @@ function updatePlayer() {
   if (p.y > st.h * T + 40) killPlayer();
 
   // ニンジン・中間地点・ゴール
-  for (const c of st.carrots) if (!c.got && overlap(p, c)) { c.got = true; st.got++; burst(c.x + 10, c.y + 10, '#ff9a2e', 10, 2.5); }
+  for (const c of st.carrots) if (!c.got && overlap(p, c)) { c.got = true; st.got++; burst(c.x + 10, c.y + 10, '#ff9a2e', 10, 2.5); Music.sfx('carrot'); }
   for (const k of st.checkpoints) if (!k.on && overlap(p, k)) {
-    st.checkpoints.forEach(o => o.on = false); k.on = true;
+    st.checkpoints.forEach(o => o.on = false); k.on = true; Music.sfx('check');
     st.spawn = { x: k.x - 3, y: k.y + 70 - 32 - 2, char: p.char };
     burst(k.x + 12, k.y + 10, '#ffe14d', 14, 3);
   }
@@ -834,7 +842,7 @@ function updateWorld() {
     }
     if (!p.dead && overlap(e, p)) {
       if (p.vy > 0 && p.y + p.h - e.y < 16) {
-        e.dead = 1; e.vy = -4; e.vx = 0; p.vy = -8; burst(e.x + 15, e.y + 10, '#8a4b2a', 12, 3);
+        e.dead = 1; e.vy = -4; e.vx = 0; p.vy = -8; burst(e.x + 15, e.y + 10, '#8a4b2a', 12, 3); Music.sfx('stomp');
       } else if (guarded()) {
         e.dead = 1; e.vy = -7; e.vx = (e.x > p.x ? 1 : -1) * 4; guardHit(); burst(e.x + 15, e.y + 10, '#9fe3ff', 10, 3);
       } else killPlayer();
@@ -855,7 +863,7 @@ function stageClear() {
   Music.jingle('clear');
   const key = 's' + st.i;
   if (!best[key] || st.time < best[key]) { best[key] = st.time; st.newBest = true; saveBest(); }
-  (totalStats = totalStats || []).push({ time: st.time, deaths: st.deaths, got: st.got, all: st.carrots.length });
+  (totalStats = totalStats || []).push({ i: st.i, time: st.time, deaths: st.deaths, got: st.got, all: st.carrots.length });
   burst(st.goal.x + 16, st.goal.gy + 20, '#ffe14d', 40, 5);
 }
 
@@ -1179,16 +1187,19 @@ function drawHUD() {
 
 // テスト版：タイトル上部のステージ選びボタン
 function stageButtons() {
+  if (!IS_TEST) return [];
   const n = STAGES.length, bw = 52, gap = 8, x0 = W / 2 - (n * bw + (n - 1) * gap) / 2;
-  return [{ x: x0 - 92, y: 14, w: 84, h: 40, label: 'TEST', stage: -1 }]
-    .concat(STAGES.map((s, i) => ({ x: x0 + i * (bw + gap), y: 14, w: bw, h: 40, label: 'S' + (i + 1), stage: i })));
+  return [{ x: x0 - 92, y: 14, w: 84, h: 40, label: 'TEST', stage: -1, open: false }]
+    .concat(STAGES.map((s, i) => ({ x: x0 + i * (bw + gap), y: 14, w: bw, h: 40, label: 'S' + (i + 1), stage: i, open: true })));
 }
-if (IS_TEST) cv.addEventListener('pointerdown', e => {
-  if (mode !== 'title') return;
+
+// 画面タップ（クリック）：ボタンに当たればその操作、それ以外は決定（スタート・次へ）
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault(); Music.unlock();
   const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
-  for (const b of stageButtons()) if (b.stage >= 0 && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
-    Music.unlock(); totalStats = []; loadStage(b.stage); return;
-  }
+  const hit = b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+  if (mode === 'title') for (const b of stageButtons()) if (b.open && hit(b)) { totalStats = []; loadStage(b.stage); return; }
+  if (TOUCH) { setKey('Enter', true); setTimeout(() => setKey('Enter', false), 50); }
 });
 
 function panel(h) { ctx.fillStyle = 'rgba(20,24,40,0.82)'; rr(W / 2 - 280, H / 2 - h / 2, 560, h, 18); ctx.fill(); }
@@ -1207,12 +1218,10 @@ function draw() {
     if (Math.floor(performance.now() / 500) % 2) outlined(TOUCH ? 'タップでスタート' : 'Enter／スペースでスタート', W / 2, 300, 24, '#fff');
     const bt = STAGES.map((s, i) => `${i + 1}：${best['s' + i] ? fmt(best['s' + i]) : '--'}`).join('　');
     txt((IS_TEST ? 'TEST ' : '') + 'ver ' + VERSION, W - 10, H - 12, 11, IS_TEST ? '#ffd27a' : 'rgba(255,255,255,0.6)', 'right', IS_TEST ? 'bold' : 'normal');
-    if (IS_TEST) {
-      for (const b of stageButtons()) {
-        ctx.fillStyle = 'rgba(20,24,40,0.75)'; rr(b.x, b.y, b.w, b.h, 10); ctx.fill();
-        ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 2; ctx.stroke();
-        txt(b.label, b.x + b.w / 2, b.y + b.h / 2, 16, '#fff', 'center');
-      }
+    for (const b of stageButtons()) {
+      ctx.fillStyle = 'rgba(20,24,40,0.75)'; rr(b.x, b.y, b.w, b.h, 10); ctx.fill();
+      ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 2; ctx.stroke();
+      txt(b.label, b.x + b.w / 2, b.y + b.h / 2, 16, '#fff', 'center');
     }
     txt((TOUCH ? '' : '数字キーでステージ選択　M 音' + (Music.muted ? 'OFF' : 'ON') + '　') + 'ベスト ' + bt, W / 2, 490, 14, '#fff', 'center', 'normal', W - 40);
     return;
@@ -1234,8 +1243,9 @@ function draw() {
   if (mode === 'end') {
     panel(260);
     outlined('ぜんぶクリア！', W / 2, H / 2 - 90, 44, '#ffe08a');
-    const tt = totalStats.reduce((a, s) => a + s.time, 0), td = totalStats.reduce((a, s) => a + s.deaths, 0);
-    const tg = totalStats.reduce((a, s) => a + s.got, 0), ta = totalStats.reduce((a, s) => a + s.all, 0);
+    const ts = totalStats || [];
+    const tt = ts.reduce((a, s) => a + s.time, 0), td = ts.reduce((a, s) => a + s.deaths, 0);
+    const tg = ts.reduce((a, s) => a + s.got, 0), ta = ts.reduce((a, s) => a + s.all, 0);
     txt(`合計タイム ${fmt(tt)}`, W / 2, H / 2 - 30, 20, '#fff', 'center');
     txt(`ニンジン ${tg}/${ta}　ミス ${td}`, W / 2, H / 2 + 5, 20, '#fff', 'center');
     txt('カメとウサギ、ナイスコンビ！', W / 2, H / 2 + 45, 18, '#ffd1e0', 'center');
