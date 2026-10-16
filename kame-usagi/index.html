@@ -264,9 +264,12 @@ const JINGLES = {
 };
 
 const Music = (() => {
-  let ac = null, master = null, noiseBuf = null, src = null, token = 0;
-  let X = null, D = null; // 音を作る先（ふだんは ac/master、BGMの作り置き中はオフライン用）
-  let want = null, cur = null, muted = false;
+  // 音は WebAudio でオフライン作成 → WAVに変換 → <audio> で鳴らす。
+  // WebAudio で直接鳴らすと、iPhoneの画面録画に音がブツ切れでしか録れない（2026-10-16 録画を解析して判明：
+  // 72%が無音の細切れになっていた）。<audio> の再生なら録画にも普通に入る。
+  const SR = 44100, VOL = 0.35;
+  let X = null, D = null, noiseBuf = null;
+  let want = null, cur = null, token = 0, unlocked = false, muted = false;
   const cache = {};
   try { muted = localStorage.getItem('kameusagi-mute') === '1'; } catch (e) {}
   const SEMI = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -289,7 +292,7 @@ const Music = (() => {
   }
   function noise(t, dur, vol, hp) {
     if (!noiseBuf) {
-      noiseBuf = X.createBuffer(1, X.sampleRate * 0.5, X.sampleRate);
+      noiseBuf = X.createBuffer(1, SR / 2, SR);
       const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     }
     const s = X.createBufferSource(), f = X.createBiquadFilter(), g = X.createGain();
@@ -321,76 +324,111 @@ const Music = (() => {
       if (k % 2 === 1) noise(t, 0.03, 0.06, 7000);
     }
   }
-  // BGMは1周ぶんを先にまとめて作り、それをループ再生する。
-  // その場で作り続ける方式だと、画面録画中などスマホが忙しいときに音作りが間に合わずノイズになるため。
-  function render(b) {
-    const key = JSON.stringify(b);
+  // 効果音・ジングルの中身（t=鳴らし始め）
+  const SFX = {
+    roll: [0.5, t => { // ギュルンッ：低い音が回転しながら上がる＋風切り
+      for (let i = 0; i < 4; i++) sweep(180 + i * 60, 420 + i * 90, t + i * 0.045, 0.06, 'square', 0.12);
+      noise(t, 0.25, 0.22, 900);
+    }],
+    rocket: [0.6, t => { // ヒューン↑：一気に駆け上がる
+      sweep(160, 1400, t, 0.45, 'sawtooth', 0.12); sweep(320, 2200, t + 0.03, 0.42, 'square', 0.06);
+      kick(t); noise(t, 0.3, 0.25, 400);
+    }],
+    break: [0.35, t => { noise(t, 0.18, 0.35, 300); sweep(220, 60, t, 0.12, 'square', 0.1); }], // ガシャッ
+  };
+  for (const name of Object.keys(JINGLES)) {
+    const len = JINGLES[name].reduce((a, j) => a + j[1], 0) + 0.4;
+    SFX[name] = [len, t => { for (const [notes, d] of JINGLES[name]) { for (const n of notes) tone(freq(n), t, d + 0.25, 'square', 0.07); t += d; } }];
+  }
+
+  // オフラインで音を作って、WAVのURLにする
+  function toWavUrl(d) {
+    const n = d.length, ab = new ArrayBuffer(44 + n * 2), v = new DataView(ab);
+    const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, SR, true);
+    v.setUint32(28, SR * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) { const x = Math.max(-1, Math.min(1, d[i])); v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true); }
+    return URL.createObjectURL(new Blob([ab], { type: 'audio/wav' }));
+  }
+  function renderUrl(key, len, draw) {
     if (!cache[key]) cache[key] = new Promise((resolve, reject) => {
-      const song = build(b), sd = 60 / song.bpm / 2;
       const O = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-      const off = new O(1, Math.ceil(song.mel.length * sd * ac.sampleRate), ac.sampleRate);
-      const px = X, pd = D; X = off; D = off.destination;
-      try { for (let i = 0; i < song.mel.length; i++) playStep(song, i, i * sd, sd); } finally { X = px; D = pd; }
+      if (!O) return reject(new Error('no audio'));
+      const off = new O(1, Math.ceil(len * SR), SR);
+      // 音が重なっても割れないように最後に抑える
+      const lim = off.createDynamicsCompressor();
+      lim.threshold.value = -12; lim.knee.value = 6; lim.ratio.value = 12; lim.attack.value = 0.003; lim.release.value = 0.15;
+      const g = off.createGain(); g.gain.value = VOL; g.connect(lim); lim.connect(off.destination);
+      X = off; D = g;
+      try { draw(); } finally { X = null; D = null; }
       off.oncomplete = e => resolve(e.renderedBuffer);
       const r = off.startRendering(); if (r && r.then) r.then(resolve, reject);
-    });
+    }).then(buf => toWavUrl(buf.getChannelData(0)));
     return cache[key];
   }
+  const bgmUrl = b => {
+    const song = build(b), sd = 60 / song.bpm / 2;
+    return renderUrl(JSON.stringify(b), song.mel.length * sd, () => { for (let i = 0; i < song.mel.length; i++) playStep(song, i, i * sd, sd); });
+  };
+  const sfxUrl = name => renderUrl('sfx:' + name, SFX[name][0], () => SFX[name][1](0.01));
+
+  // 再生する<audio>。効果音は重なっても鳴るように2つずつ
+  const silent = toWavUrl(new Float32Array(SR / 20));
+  const bgmEl = new Audio(silent); bgmEl.loop = true;
+  const fxEls = {};
+  for (const name of Object.keys(SFX)) {
+    fxEls[name] = [new Audio(silent), new Audio(silent)]; fxEls[name].i = 0;
+    sfxUrl(name).then(url => fxEls[name].forEach(el => { el.src = url; })).catch(() => {});
+  }
+  const allEls = () => [bgmEl, ...Object.values(fxEls).flat()];
+  const playEl = el => { const p = el.play(); if (p && p.catch) p.catch(() => {}); };
+
   function start() {
-    const my = ++token;
-    if (src) { try { src.stop(); } catch (e) {} src.disconnect(); src = null; }
-    cur = null;
-    if (!ac || !want) return;
+    const my = ++token; cur = null;
+    bgmEl.pause();
+    if (!unlocked || !want) return;
     const b = want; cur = b;
-    render(b).then(buf => {
+    bgmUrl(b).then(url => {
       if (my !== token) return; // 作っている間に別の曲に切り替わった
-      src = ac.createBufferSource(); src.buffer = buf; src.loop = true;
-      src.connect(master); src.start(ac.currentTime + 0.03);
+      bgmEl.src = url; bgmEl.currentTime = 0; bgmEl.muted = muted; playEl(bgmEl);
     }).catch(() => {});
   }
+  // タブを裏に回したら止める・戻ったら再開
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) bgmEl.pause();
+    else if (unlocked && want && cur === want && bgmEl.paused) playEl(bgmEl);
+  });
+
   return {
-    // キー入力のタイミングで呼ぶ（ブラウザは操作前に音を出せないため）
+    // キー入力・タップのタイミングで呼ぶ（スマホは操作の中でないと音の再生を許してくれない）
     unlock() {
-      if (!ac) {
-        const A = window.AudioContext || window.webkitAudioContext; if (!A) return;
-        try { ac = new A({ latencyHint: 'playback' }); } catch (e) { ac = new A(); } // 遅れより途切れないことを優先
-        // 音が重なっても上限を超えて割れないように、最後に自動で抑える
-        const lim = ac.createDynamicsCompressor();
-        lim.threshold.value = -12; lim.knee.value = 6; lim.ratio.value = 12; lim.attack.value = 0.003; lim.release.value = 0.15;
-        master = ac.createGain(); master.gain.value = muted ? 0 : 0.35;
-        master.connect(lim); lim.connect(ac.destination);
-        X = ac; D = master;
-      }
-      if (ac.state !== 'running') ac.resume();
-      if (want && cur !== want) start();
+      if (!unlocked) {
+        unlocked = true;
+        // 全部の<audio>を一度だけ無音で鳴らして、あとから自由に鳴らせるようにする
+        for (const el of allEls()) {
+          el.muted = true;
+          const p = el.play();
+          const done = () => { if (el !== bgmEl || !want) { el.pause(); el.currentTime = 0; } el.muted = muted; };
+          if (p && p.then) p.then(done, () => { el.muted = muted; }); else done();
+        }
+        if (want) start();
+      } else if (want && cur === want && bgmEl.paused && !document.hidden) playEl(bgmEl);
     },
     play(b) { if (want === b && cur === b) return; want = b; start(); },
     stop() { want = null; start(); },
-    jingle(name) {
-      this.stop(); if (!ac) return;
-      let t = ac.currentTime + 0.05;
-      for (const [notes, d] of JINGLES[name]) { for (const n of notes) tone(freq(n), t, d + 0.25, 'square', 0.07); t += d; }
-    },
-    // 効果音（BGMと同じ音量つまみ＝消音も共通）
     sfx(name) {
-      if (!ac) return;
-      const t = ac.currentTime + 0.01;
-      if (name === 'roll') { // ギュルンッ：低い音が回転しながら上がる＋風切り
-        for (let i = 0; i < 4; i++) sweep(180 + i * 60, 420 + i * 90, t + i * 0.045, 0.06, 'square', 0.12);
-        noise(t, 0.25, 0.22, 900);
-      } else if (name === 'rocket') { // ヒューン↑：一気に駆け上がる
-        sweep(160, 1400, t, 0.45, 'sawtooth', 0.12);
-        sweep(320, 2200, t + 0.03, 0.42, 'square', 0.06);
-        kick(t); noise(t, 0.3, 0.25, 400);
-      } else if (name === 'break') { // ガシャッ
-        noise(t, 0.18, 0.35, 300); sweep(220, 60, t, 0.12, 'square', 0.1);
-      }
+      if (!unlocked || !fxEls[name]) return;
+      const pool = fxEls[name], el = pool[pool.i++ % pool.length];
+      el.currentTime = 0; el.muted = muted; playEl(el);
     },
+    jingle(name) { this.stop(); this.sfx(name); },
     toggleMute() {
-      muted = !muted; if (master) master.gain.value = muted ? 0 : 0.35;
+      muted = !muted; for (const el of allEls()) el.muted = muted;
       try { localStorage.setItem('kameusagi-mute', muted ? '1' : '0'); } catch (e) {}
     },
     get muted() { return muted; },
+    _debug() { return { unlocked, bgm: bgmEl.src.slice(0, 20), paused: bgmEl.paused, fx: Object.keys(fxEls).map(k => k + ':' + fxEls[k][0].src.slice(0, 10)).join(',') }; },
   };
 })();
 const TITLE_BGM = { song: 'sougen', bpm: 116, drums: false };
