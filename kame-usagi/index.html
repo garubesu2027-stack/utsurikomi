@@ -86,7 +86,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/17-b'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/17-c'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
@@ -851,7 +851,8 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) pause
 function step() {
   if (mode === 'title') {
     Music.play(TITLE_BGM);
-    for (let i = 0; i < STAGES.length; i++) if (pressed['Digit' + (i + 1)]) { totalStats = []; loadStage(i); }
+    // 数字キーのステージ選びはテスト版だけ（公開版は毎回ステージ1から）
+    if (IS_TEST) for (let i = 0; i < STAGES.length; i++) if (pressed['Digit' + (i + 1)]) { totalStats = []; loadStage(i); }
     if (pOK()) { totalStats = []; loadStage(0); }
   } else if (mode === 'intro') {
     Music.play(st.S.bgm);
@@ -1255,7 +1256,7 @@ function draw() {
       ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 2; ctx.stroke();
       txt(b.label, b.x + b.w / 2, b.y + b.h / 2, 16, '#fff', 'center');
     }
-    txt((TOUCH ? '' : '数字キーでステージ選択　M 音' + (Music.muted ? 'OFF' : 'ON') + '　') + 'ベスト ' + bt, W / 2, 490, 14, '#fff', 'center', 'normal', W - 40);
+    txt((TOUCH ? '' : (IS_TEST ? '数字キーでステージ選択　' : '') + 'M 音' + (Music.muted ? 'OFF' : 'ON') + '　') + 'ベスト ' + bt, W / 2, 490, 14, '#fff', 'center', 'normal', W - 40);
     return;
   }
   drawWorld();
