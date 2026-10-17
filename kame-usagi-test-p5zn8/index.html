@@ -91,7 +91,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/17-e'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/17-f'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'test';
 const IS_TEST = EDITION === 'test';
@@ -116,6 +116,7 @@ const CHARS = {
 
 // ===================== ステージ（地図の記号） =====================
 // #=地面 ==石 ^=トゲ C=崩れる橋（カメが乗ると落ちる） V=落石装置 A=矢（左向き） D=矢（右向き）
+// 風はマップ記号ではなくステージの winds で決める（軽いウサギだけ流される）
 // X=ひび割れブロック（甲羅アタックで壊れる） F=ニセモノのゴール（触るとはじかれる。飛び越えるしかない） B=押せる箱 E=敵 *=20πコイン K=中間地点 P=スタート G=ゴール
 const STAGES = [
   {
@@ -221,26 +222,38 @@ const STAGES = [
     ],
   },
   {
-    name: 'ステージ5　ニセモノの丘', start: 'kame', bgm: { song: 'tani', bpm: 136, tr: 3 },
-    sky: ['#f29bb5', '#ffe3ec'], hill: '#e7a1b8',
+    name: 'ステージ5　強風の崖', start: 'kame', bgm: { song: 'tani', bpm: 136, tr: 3 },
+    sky: ['#8ec5d6', '#eef7f2'], hill: '#a8c9a0',
+    // 風：x0〜x1マスの間で dir の向きに吹く（-1=左へ）。calm/warn/blow があると「やむ→合図→吹く」をくり返す。無ければずっと吹く
+    winds: [
+      { x0: 6, x1: 24, dir: -1, power: 6.5, calm: 130, warn: 60, blow: 150 },
+      { x0: 28, x1: 39, dir: -1, power: 7 },
+      { x0: 48, x1: 56, dir: 1, power: 3 },
+      { x0: 66, x1: 73, dir: -1, power: 7 },
+      { x0: 85, x1: 100, dir: -1, power: 6.5, calm: 170, warn: 60, blow: 150 },
+    ],
     hints: [
-      { x: 2, y: 5, t: 'ステージ5：ゴールはすぐそこ！…のはず' },
-      { x: 61, y: 5, t: '今度こそ本物…？' },
+      { x: 2, y: 5, t: '風が吹くと軽いウサギは押し戻される！ カメならへっちゃら' },
+      { x: 12, y: 3, t: '穴は風がやんだすきにウサギでジャンプ' },
+      { x: 26, y: 5, t: 'ずっと向かい風…　でも転がる甲羅は風に負けない！' },
+      { x: 41, y: 4, t: '矢をカメでガード→ウサギに交代で追い風ロケット！' },
+      { x: 62, y: 3, t: '風の中の敵は甲羅アタックではね飛ばせ' },
+      { x: 86, y: 4, t: '最後の崖。風がやんだ瞬間にロケットジャンプ！' },
     ],
     map: [
       '',
       '',
       '',
       '',
-      '                                                        *',
-      '',
-      '',
-      '                                                    K   F',
-      '                            *   *                 ###########       *',
-      '             *                              *     ###########                 *',
-      '  P                     F           K             A##########     E    E            G',
-      '##########^^^^^^^^############     #######################################################',
-      '##############################     #######################################################',
+      '                                        X',
+      '                                        X          *                             *                 *',
+      '                                        X                K    *                                       G',
+      '               *                        X              ##########              ######           ##########',
+      '                                        X              ##########              ######           ##########',
+      '                                        X              ##########              ######    *      ##########',
+      '  P                   *                 X  *           A#########       E E    ######           A#########',
+      '##############   ###############################       ###################################################',
+      '##############   ###############################       ###################################################',
     ],
   },
   // @test-only-end
@@ -603,7 +616,7 @@ function loadStage(i) {
   st = {
     i, S, w, h: base.length, base, tiles: null,
     spawnsBox: [], spawnsEnemy: [], coins: [], checkpoints: [], goal: null,
-    shooters: [], droppers: [], fakes: [],
+    shooters: [], droppers: [], fakes: [], winds: (S.winds || []).map(o => ({ ...o, t: 0 })),
     boxes: [], enemies: [], rocks: [], arrows: [], particles: [], popups: [], crumble: {},
     time: 0, deaths: 0, got: 0, spawn: null, flash: 0,
   };
@@ -672,6 +685,18 @@ function moveY(o, dy, solids) {
   if (hit && dy > 0) o.onGround = true;
   if (hit) o.vy = 0;
   return hit;
+}
+
+// ===================== 強風 =====================
+function windState(w) {
+  if (!w.calm) return 'blow';
+  const c = w.t % (w.calm + w.warn + w.blow);
+  return c < w.calm ? 'calm' : c < w.calm + w.warn ? 'warn' : 'blow';
+}
+const inWind = (w, o) => { const cx = o.x + o.w / 2; return cx >= w.x0 * T && cx < (w.x1 + 1) * T; };
+function windPush(o) {
+  for (const w of st.winds) if (inWind(w, o) && windState(w) === 'blow') return w.dir * w.power;
+  return 0;
 }
 
 // ===================== パーティクル =====================
@@ -745,7 +770,7 @@ function updatePlayer() {
   // ジャンプ（先行入力＋コヨーテタイム）
   if (pJump()) p.jbuf = 7; else if (p.jbuf > 0) p.jbuf--;
   if (p.onGround) p.coyote = 6; else if (p.coyote > 0) p.coyote--;
-  if (p.jbuf > 0 && p.coyote > 0 && !p.shield && !p.roll) {
+  if (p.jbuf > 0 && p.coyote > 0 && !p.shield && !p.roll && !p.rocket) { // ロケット中は普通のジャンプで上書きしない（交代と同時にジャンプを押すと弱くなっていた）
     p.vy = -N.jump; p.jbuf = 0; p.coyote = 0; Music.sfx('jump');
   }
   if (!kJumpHeld() && p.vy < -3 && !p.rocket) p.vy *= 0.85;
@@ -766,6 +791,9 @@ function updatePlayer() {
     if (p.roll) { burst(p.x + 15 + p.face * 16, p.y + 16, '#e8e2d0', 10, 3); p.roll = 0; p.vx = -p.face * 2; p.vy = -4; }
     else p.vx = 0;
   }
+  // 強風：軽いウサギだけ流される（カメ・甲羅アタック中は平気）
+  const wind = N.heavy ? 0 : windPush(p);
+  if (wind) moveX(p, wind, st.boxes);
   moveY(p, p.vy, st.boxes);
   if (Math.abs(p.vx) > 0.3 && p.onGround) p.anim += Math.abs(p.vx) * 0.12;
 
@@ -821,6 +849,12 @@ function updateWorld() {
       st.tiles[ty][tx] = ' '; delete st.crumble[k];
       burst(tx * T + 20, ty * T + 20, '#a0703c', 10, 2.5);
     }
+  }
+
+  // 強風のタイマー（吹く1秒前に合図）
+  for (const w of st.winds) {
+    w.t++;
+    if (w.calm && w.t % (w.calm + w.warn + w.blow) === w.calm && !p.dead && inWind(w, p)) popup('風が来るよ！', '#e8f6ff');
   }
 
   // 落石
@@ -1102,6 +1136,47 @@ function drawTile(c, tx, ty, cam) {
   }
 }
 
+// 強風：吹き始めの位置に吹き流し（やむ＝垂れる／合図＝バタつく／吹く＝真横）、吹いている間は風のすじ
+function drawWinds(cam) {
+  for (const w of st.winds) {
+    const X0 = w.x0 * T, X1 = (w.x1 + 1) * T;
+    if (X1 - cam < -80 || X0 - cam > W + 80) continue;
+    const state = windState(w);
+    if (state === 'blow') {
+      ctx.save(); ctx.beginPath(); ctx.rect(X0 - cam, 0, X1 - X0, H); ctx.clip();
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+      const n = Math.ceil((X1 - X0) / 45), span = X1 - X0 + 120;
+      for (let i = 0; i < n; i++) {
+        const y = 110 + (i * 53) % 330, len = 40 + (i * 29) % 40;
+        const ph = (st.time * w.power * 2.2 + i * 137) % span;
+        const x = (w.dir > 0 ? X0 - 60 + ph : X1 + 60 - ph) - cam;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - w.dir * len, y); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    // 吹き流し（風の区間の左端。足場が無ければ左の地面まで戻して立てる）
+    let fc = w.x0, gy = st.h;
+    for (; fc > 0; fc--) { gy = 0; while (gy < st.h && !isSolid(fc, gy)) gy++; if (gy < st.h) break; }
+    const fx = fc * T + 20 - cam;
+    const top = gy * T - 74;
+    ctx.fillStyle = '#6b5a4a'; ctx.fillRect(fx - 2, top, 4, 74);
+    ctx.fillStyle = '#ff7a3d';
+    ctx.beginPath();
+    if (state === 'blow') {
+      const f = Math.sin(st.time * 0.5) * 2;
+      ctx.moveTo(fx, top + 2); ctx.lineTo(fx + w.dir * 46, top + 9 + f); ctx.lineTo(fx, top + 18);
+    } else if (state === 'warn') {
+      const f = Math.sin(st.time * 0.9) * 10;
+      ctx.moveTo(fx, top + 2); ctx.lineTo(fx + w.dir * 26, top + 16 + f); ctx.lineTo(fx, top + 18);
+    } else {
+      ctx.moveTo(fx, top + 2); ctx.lineTo(fx + w.dir * 7, top + 32); ctx.lineTo(fx, top + 18);
+    }
+    ctx.fill();
+    if (state === 'warn' && Math.floor(st.time / 8) % 2) outlined('風!', fx, top - 16, 18, '#e8f6ff');
+    else if (state === 'blow') outlined(w.dir < 0 ? '←風' : '風→', fx, top - 16, 15, '#e8f6ff');
+  }
+}
+
 function drawBackground(cam) {
   const S = st ? st.S : STAGES[0];
   const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -1147,6 +1222,8 @@ function drawWorld() {
     const c = tileAt(tx, ty);
     if (c !== ' ' && tx >= 0 && tx < st.w) drawTile(c, tx, ty, cam);
   }
+
+  drawWinds(cam);
 
   // 中間地点
   for (const k of st.checkpoints) {
