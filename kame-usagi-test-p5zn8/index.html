@@ -67,12 +67,17 @@
     #sys .btn{width:34px;height:34px;font-size:15px;}
     #rotate{display:none;}
   }
+  /* タイトル画面だけ出すブログへのリンク（位置はdrawでゲーム画面に合わせる） */
+  #blog{position:fixed;display:none;transform:translate(-50%,-50%);z-index:5;white-space:nowrap;
+    color:#fff;text-decoration:none;font-weight:bold;font-family:"Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif;
+    background:rgba(20,24,40,0.75);border:2px solid #ffd27a;border-radius:999px;padding:0.4em 1em;}
   #rotate{position:absolute;left:0;right:0;top:50%;text-align:center;color:#8f9bbf;
     font:13px "Hiragino Sans",sans-serif;transform:translateY(-50%);pointer-events:none;}
 </style>
 </head>
 <body>
 <canvas id="c" width="960" height="520"></canvas>
+<a id="blog" href="https://kame-usagi.com/ai-game-2/" target="_blank" rel="noopener">このゲーム、どうやって作ったの？ → 作った話はこちら</a>
 <div id="pad">
   <div id="sys"><div class="btn" id="b-pause"><span class="bar"></span><span class="bar"></span></div><div class="btn" id="b-mute">♪</div></div>
   <div id="rotate">横向きにすると画面が大きくなるよ</div>
@@ -86,7 +91,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/17-c'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/17-d'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'test';
 const IS_TEST = EDITION === 'test';
@@ -1288,8 +1293,19 @@ function pauseButtons() {
 
 function panel(h) { ctx.fillStyle = 'rgba(20,24,40,0.82)'; rr(W / 2 - 280, H / 2 - h / 2, 560, h, 18); ctx.fill(); }
 
+const blogLink = document.getElementById('blog');
+function placeBlogLink(show) {
+  if (!show) { if (blogLink.style.display !== 'none') blogLink.style.display = 'none'; return; }
+  const r = cv.getBoundingClientRect();
+  blogLink.style.display = 'block';
+  blogLink.style.left = (r.left + r.width / 2) + 'px';
+  blogLink.style.top = (r.top + r.height * 470 / H) + 'px';
+  blogLink.style.fontSize = Math.max(11, r.width / W * 15) + 'px';
+}
+
 function draw() {
   ctx.clearRect(0, 0, W, H);
+  placeBlogLink(mode === 'title');
   if (mode === 'title') {
     drawBackground(performance.now() * 0.03);
     ctx.fillStyle = '#5cbf4a'; ctx.fillRect(0, 430, W, 90); ctx.fillStyle = '#8b5a2b'; ctx.fillRect(0, 445, W, 75);
@@ -1307,7 +1323,7 @@ function draw() {
       ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 2; ctx.stroke();
       txt(b.label, b.x + b.w / 2, b.y + b.h / 2, 16, '#fff', 'center');
     }
-    txt((TOUCH ? '' : (IS_TEST ? '数字キーでステージ選択　' : '') + 'M 音' + (Music.muted ? 'OFF' : 'ON') + '　') + 'ベスト ' + bt, W / 2, 490, 14, '#fff', 'center', 'normal', W - 40);
+    txt((TOUCH ? '' : (IS_TEST ? '数字キーでステージ選択　' : '') + 'M 音' + (Music.muted ? 'OFF' : 'ON') + '　') + 'ベスト ' + bt, W / 2, 504, 13, '#fff', 'center', 'normal', W - 40);
     return;
   }
   drawWorld();
