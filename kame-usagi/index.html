@@ -97,7 +97,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/17-d'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/17-e'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
@@ -538,9 +538,11 @@ if (TOUCH) {
   // 画面タップ＝決定（スタート・次のステージへ）
   // iPhoneのダブルタップ拡大・ピンチ拡大を止める（ボタンの連打でズームしないように）
   // ※ボタン操作はpointerイベントで受けているので、touchを止めても操作には影響しない
-  document.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+  // ※ブログへのリンク（#blog）だけは止めない。止めるとタップしてもリンクが開かない（10/17）
+  const onLink = e => e.target.closest && e.target.closest('#blog');
+  document.addEventListener('touchstart', e => { if (!onLink(e)) e.preventDefault(); }, { passive: false });
   document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
-  document.addEventListener('touchend', e => { Music.unlock(); e.preventDefault(); }, { passive: false });
+  document.addEventListener('touchend', e => { Music.unlock(); if (!onLink(e)) e.preventDefault(); }, { passive: false });
   ['gesturestart', 'gesturechange', 'dblclick'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
   addEventListener('contextmenu', e => e.preventDefault());
 }
