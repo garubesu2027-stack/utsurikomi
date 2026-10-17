@@ -97,7 +97,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/17-g'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/17-h'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
@@ -211,6 +211,12 @@ const COMBO = {
   rollTime: 62,      // 甲羅アタックの長さ（60で1秒）
   chargeTime: 40,    // ロケットジャンプ：ガードで受けてから交代できる猶予
   rocketJump: 16.5,  // ロケットジャンプの強さ（ウサギの普通のジャンプは12.4）
+};
+
+// ===================== 大岩（数字を変えると調整できる） =====================
+const BOULDER = {
+  speed: 3.6, // 転がる速さ（カメ2.4より速く、ウサギ5.2より遅い。甲羅アタックは7.5）
+  r: 40,      // 半径（2マス分の大きさ）
 };
 
 // ===================== 入力 =====================
@@ -560,7 +566,7 @@ function loadStage(i) {
     i, S, w, h: base.length, base, tiles: null,
     spawnsBox: [], spawnsEnemy: [], coins: [], checkpoints: [], goal: null,
     shooters: [], droppers: [], fakes: [], winds: (S.winds || []).map(o => ({ ...o, t: 0 })),
-    boxes: [], enemies: [], rocks: [], arrows: [], particles: [], popups: [], crumble: {},
+    boxes: [], enemies: [], rocks: [], arrows: [], particles: [], popups: [], crumble: {}, boulders: [], shake: 0,
     time: 0, deaths: 0, got: 0, spawn: null, flash: 0,
   };
   for (let y = 0; y < st.h; y++) for (let x = 0; x < w; x++) {
@@ -588,6 +594,7 @@ function resetDynamic() {
   st.boxes = st.spawnsBox.map(b => ({ x: b.x, y: b.y, w: T, h: T, vy: 0, onGround: false }));
   st.enemies = st.spawnsEnemy.map(e => ({ x: e.x, y: e.y, w: 30, h: 28, vx: -1, vy: 0, dead: 0 }));
   st.rocks = []; st.arrows = []; st.crumble = {};
+  st.boulders = (st.S.boulders || []).map(b => ({ ...b, state: 'wait', bx: 0, by: 0, vy: 0, ang: 0 }));
 }
 
 function makePlayer(s) {
@@ -838,6 +845,10 @@ function updateWorld() {
   }
   st.arrows = st.arrows.filter(a => !a.dead);
 
+  // 大岩
+  for (const b of st.boulders) updateBoulder(b);
+  if (st.shake > 0) st.shake--;
+
   // 敵
   for (const e of st.enemies) {
     if (e.dead) { e.dead++; e.vy += 0.5; e.y += e.vy; e.x += e.vx; continue; }
@@ -866,6 +877,50 @@ function updateWorld() {
   if (st.flash > 0) st.flash--;
 }
 
+function updateBoulder(b) {
+  const R = BOULDER.r;
+  if (b.state === 'wait') {
+    if (mode !== 'play' || p.dead) return;
+    const px = p.x + p.w / 2;
+    if (px >= b.stop * T) { b.state = 'done'; return; } // 中間地点から再開したときなど、もう通り過ぎている
+    if (px < b.trigger * T) return;
+    b.state = b.drop ? 'drop' : 'roll';
+    b.bx = b.x * T + R; b.by = b.drop ? -R * 2 : b.row * T - R;
+    st.shake = 30; Music.sfx('break');
+    st.popups.push({ x: p.x + 15, y: p.y - 30, t: b.drop ? 'ドーン！' : 'ゴゴゴゴ…', color: '#ffd27a', life: 70 });
+    return;
+  }
+  if (b.state === 'done') return;
+  if (b.state === 'drop') {
+    b.vy += GRAV; b.by += b.vy;
+    if (b.by >= b.row * T - R) { b.by = b.row * T - R; b.vy = 0; b.state = 'roll'; st.shake = 20; burst(b.bx, b.by + R, '#a08a70', 20, 4); Music.sfx('break'); }
+  } else if (b.state === 'roll') {
+    b.bx += BOULDER.speed; b.ang += BOULDER.speed / R;
+    if (st.time % 4 === 0) burst(b.bx - R * 0.6, b.by + R - 4, '#d8c8a8', 2, 1.5);
+    if (b.bx + R >= b.stop * T) {
+      if (b.end === 'crash') { b.state = 'done'; st.shake = 30; burst(b.bx + R * 0.5, b.by, '#8d8a85', 40, 6); Music.sfx('break'); return; }
+      b.state = 'fall'; b.vy = 0;
+    }
+  } else if (b.state === 'fall') {
+    b.bx += BOULDER.speed * 0.6; b.vy += GRAV; b.by += b.vy; b.ang += 0.05;
+    // 重いので崩れる橋をこわしながら落ちる
+    eachTile({ x: b.bx - R, y: b.by - R, w: R * 2, h: R * 2 }, (tx, ty) => {
+      if (tileAt(tx, ty) === 'C') { st.tiles[ty][tx] = ' '; burst(tx * T + 20, ty * T + 20, '#a0703c', 10, 2.5); }
+    });
+    if (b.by > st.h * T + R * 2) { b.state = 'done'; st.shake = 25; Music.sfx('break'); return; }
+  }
+  // ひび割れ壁はこわし、敵はつぶす
+  eachTile({ x: b.bx - R, y: b.by - R, w: R * 2, h: R * 2 }, (tx, ty) => {
+    if (tileAt(tx, ty) === 'X') { st.tiles[ty][tx] = ' '; burst(tx * T + 20, ty * T + 20, '#a9a9b3', 12, 4); }
+  });
+  for (const e of st.enemies) if (!e.dead && Math.hypot(e.x + 15 - b.bx, e.y + 14 - b.by) < R + 10) { e.dead = 1; e.vy = -6; e.vx = 4; }
+  // 追いつかれたら1発アウト（円とプレイヤーの四角で判定・少し甘め）
+  if (!p.dead) {
+    const cx = Math.max(p.x, Math.min(b.bx, p.x + p.w)), cy = Math.max(p.y, Math.min(b.by, p.y + p.h));
+    if (Math.hypot(cx - b.bx, cy - b.by) < R - 6) killPlayer();
+  }
+}
+
 function stageClear() {
   mode = 'clear'; modeTimer = 0;
   Music.jingle('clear');
@@ -888,7 +943,13 @@ function step() {
     Music.play(TITLE_BGM);
     // 数字キーのステージ選びはテスト版だけ（公開版は毎回ステージ1から）
     if (IS_TEST) for (let i = 0; i < STAGES.length; i++) if (pressed['Digit' + (i + 1)]) { totalStats = []; loadStage(i); }
-    if (pOK()) { totalStats = []; loadStage(0); }
+    if (pOK()) {
+      // ジャンプを押しながらスタート＝ステージ7から（ステージ6クリアのごほうび）。まだ無いときは何も起きない
+      // PCはスペースがスタートも兼ねるので「↑/W/Zを押しながら」、スマホは「ジャンプボタン（Space）を押しながらタップ（Enter）」
+      const cmd = keys.ArrowUp || keys.KeyW || keys.KeyZ || (pressed.Enter && keys.Space);
+      if (!cmd) { totalStats = []; loadStage(0); }
+      else if (STAGES[6]) { totalStats = []; loadStage(6); }
+    }
   } else if (mode === 'intro') {
     Music.play(st.S.bgm);
     if (--modeTimer <= 0 || pOK()) mode = 'play';
@@ -1147,6 +1208,8 @@ function drawWorld() {
     st.cam += (target - st.cam) * 0.08;
     cam = Math.round(st.cam);
   } else cam = clampCam(p.x - W * 0.4);
+  ctx.save();
+  if (st.shake > 0) ctx.translate((Math.random() - 0.5) * st.shake * 0.4, (Math.random() - 0.5) * st.shake * 0.4);
   drawBackground(cam);
 
   // ヒント看板
@@ -1237,6 +1300,22 @@ function drawWorld() {
     const tip = d < 0 ? x : x + 24;
     ctx.fillStyle = '#555'; ctx.beginPath(); ctx.moveTo(tip + d * 6, a.y + 2); ctx.lineTo(tip, a.y - 3); ctx.lineTo(tip, a.y + 7); ctx.fill();
   }
+  // 大岩（画面の左外にいるときは端に「大岩!」）
+  for (const b of st.boulders) {
+    if (b.state === 'wait' || b.state === 'done') continue;
+    const x = b.bx - cam, R = BOULDER.r;
+    if (x + R < 0) {
+      if (Math.floor(st.time / 10) % 2) { outlined('◀ 大岩!', 52, Math.max(110, Math.min(H - 60, b.by)), 20, '#ffd27a', '#6b2a00'); }
+      continue;
+    }
+    ctx.save(); ctx.translate(x, b.by); ctx.rotate(b.ang);
+    ctx.fillStyle = '#8a7a68'; ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#5e5246'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = '#a3927e'; ctx.beginPath(); ctx.arc(-12, -14, 13, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#5e5246'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-R * 0.7, 6); ctx.lineTo(-10, 10); ctx.lineTo(4, 26); ctx.moveTo(-10, 10); ctx.lineTo(14, -4); ctx.lineTo(R * 0.8, -12); ctx.moveTo(14, -4); ctx.lineTo(22, 18); ctx.stroke();
+    ctx.restore();
+  }
   // プレイヤー
   if (!p.dead && !(p.inv > 0 && Math.floor(p.inv / 4) % 2)) {
     if (p.char === 'kame' && p.roll) drawShellRoll(p.x - cam, p.y, st.time * 0.5 * p.face);
@@ -1255,6 +1334,7 @@ function drawWorld() {
   ctx.globalAlpha = 1;
   for (const q of st.popups) { ctx.globalAlpha = Math.min(1, q.life / 20); outlined(q.t, q.x - cam, q.y, q.size || 20, q.color, q.stroke); }
   ctx.globalAlpha = 1;
+  ctx.restore();
   if (st.flash) { ctx.fillStyle = `rgba(255,255,255,${st.flash / 30})`; ctx.fillRect(0, 0, W, H); }
 }
 
@@ -1366,7 +1446,26 @@ function draw() {
     outlined(st.S.name, W / 2, H / 2 - 18, 32, '#ffe08a');
     txt(`${CHARS[st.S.start].name}からスタート`, W / 2, H / 2 + 28, 18, '#fff', 'center');
   }
-  if (mode === 'clear') {
+  if (mode === 'clear' && st.S.finale) {
+    // ステージ6クリア：カメとウサギがステージ7からの入り方を教える（ステージ7が無いうちは「準備中」の看板）
+    const pw = Math.min(720, W - 24);
+    ctx.fillStyle = 'rgba(20,24,40,0.85)'; rr(W / 2 - pw / 2, 40, pw, 440, 18); ctx.fill();
+    outlined('ステージクリア！', W / 2, 82, 40, '#ffe08a');
+    txt(`タイム ${fmt(st.time)}${st.newBest ? '　★ベスト更新！' : ''}　コイン ${st.got}/${st.coins.length}　ミス ${st.deaths}`, W / 2, 128, 18, '#fff', 'center', 'bold', pw - 40);
+    drawSpeech({ who: 'kame', t: 'ここまで来てくれてありがとう！' }, W / 2, 192);
+    drawSpeech({ who: 'usagi', t: '次からはジャンプ押しながらスタートでステージ7からや！' }, W / 2, 260);
+    if (!TOUCH) txt('（パソコンは ↑ を押しながら Enter）', W / 2, 302, 14, '#b8c4e8', 'center');
+    if (!STAGES[st.S.finale.next]) {
+      // 木の看板
+      const bx = W / 2 - 120, by = 330;
+      ctx.fillStyle = '#7a4d23'; ctx.fillRect(bx + 40, by + 50, 10, 42); ctx.fillRect(bx + 190, by + 50, 10, 42);
+      ctx.fillStyle = '#c98b45'; rr(bx, by, 240, 58, 8); ctx.fill();
+      ctx.strokeStyle = '#7d5326'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = '#ffcf33'; for (let i = 0; i < 6; i++) { ctx.fillRect(bx + 8 + i * 40, by + 6, 20, 5); }
+      txt('ステージ7は準備中', W / 2, by + 34, 22, '#4a2a10', 'center');
+    }
+    txt((TOUCH ? 'タップ' : 'Enter') + (st.i + 1 < STAGES.length ? ' で次のステージへ' : ' でエンディングへ'), W / 2, 456, 16, '#b8c4e8', 'center');
+  } else if (mode === 'clear') {
     panel(300);
     outlined('ステージクリア！', W / 2, H / 2 - 110, 40, '#ffe08a');
     txt(`タイム ${fmt(st.time)}${st.newBest ? '　★ベスト更新！' : ''}`, W / 2, H / 2 - 60, 20, '#fff', 'center');
