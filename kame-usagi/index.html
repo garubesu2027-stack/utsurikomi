@@ -97,7 +97,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/18-g'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/18-h'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
@@ -696,7 +696,7 @@ function popup(t, color) { st.popups.push({ x: p.x + 15, y: p.y - 24, t, color, 
 
 // 必殺技を COMBO.chainTime 以内に「ちがう技」で続けるとコンボ（甲羅→ロケット→甲羅…・2回目から表示）。戻り値＝今のコンボ数
 // 同じ技を続けたら1からやり直し（走りながら交代を連打するだけで甲羅アタックがつながっていたため・10/18）
-// 3コンボ以上は技の掛け声のかわりにコンボのセリフ（声が重ならないように1つだけ）
+// 声は技を出したキャラがコンボ数を言う（1コンボ目から。長いセリフは次の技で切れてしまうのでやめた・10/18）
 function chainCombo(move) {
   st.combo = st.comboT > 0 && st.lastMove !== move ? st.combo + 1 : 1;
   st.lastMove = move;
@@ -708,9 +708,6 @@ function chainCombo(move) {
   for (let i = 0; i < Math.min(5, st.combo); i++) burst(p.x + 15, p.y + 16, cols[i], 10, 3 + st.combo * 0.6);
   return st.combo;
 }
-
-// 2コンボまでは技の掛け声、3コンボ目からはコンボ数ごとのセリフ（6以上は同じ）
-const comboVoice = (n, move) => n < 3 ? move : 'c' + Math.min(6, n);
 
 function killPlayer() {
   if (p.dead || p.inv > 0 || mode !== 'play') return; // ゴール後などは無敵
@@ -734,11 +731,11 @@ function updatePlayer() {
     if (FEATURES.combo && from === 'usagi' && (Math.abs(p.vx) >= COMBO.rollMinSpeed || st.S.practice)) {
       // 🐰→🐢 甲羅アタック：ダッシュの勢いのまま甲羅で突進
       p.roll = COMBO.rollTime; p.vx = (Math.sign(p.vx) || p.face) * COMBO.rollSpeed; p.face = Math.sign(p.vx);
-      popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll'); Music.voice(comboVoice(chainCombo('roll'), 'roll'));
+      popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll'); Music.voice('k' + Math.min(10, chainCombo('roll')));
     } else if (FEATURES.combo && from === 'kame' && (p.charge > 0 || st.S.practice)) {
       // 🐢→🐰 ロケットジャンプ：ガードで受けた衝撃を使って大ジャンプ
       p.vy = -COMBO.rocketJump; p.rocket = true; p.charge = 0; p.roll = 0;
-      popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket'); Music.voice(comboVoice(chainCombo('rocket'), 'rocket'));
+      popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket'); Music.voice('u' + Math.min(10, chainCombo('rocket')));
       burst(p.x + 15, p.y + 30, '#ffb347', 24, 4);
     } else {
       p.roll = 0; Music.sfx('swap');
