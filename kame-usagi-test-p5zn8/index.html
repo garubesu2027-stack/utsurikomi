@@ -91,12 +91,13 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/18-l'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
-// 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
+const VERSION = '10/18-m'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+// 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
+// 公開版＝'public'（@test-only と @dev-only を取り除く）
 const EDITION = 'test';
 const IS_TEST = EDITION === 'test';
 const FEATURES = {
-  combo: IS_TEST, // 切り替えコンボ（甲羅アタック・ロケットジャンプ）。公開するときは true にする
+  combo: EDITION !== 'public', // 切り替えコンボ（甲羅アタック・ロケットジャンプ）。テスト版・お試し版はオン。公開するときは true にする
 };
 const FONT = '"Hiragino Maru Gothic ProN","Hiragino Sans","Yu Gothic",sans-serif';
 
@@ -296,7 +297,7 @@ const STAGES = [
 
 // おまけのステージ（ステージ選びに出さない・番号は100から）
 const EXTRA_STAGES = [
-  // @test-only-start コンボ練習場（テスト版だけ）：交代を押すだけで必殺技が出る。セリフや演出の確認用
+  // @dev-only-start コンボ練習場（テスト版だけ・お試し版にも入れない）：交代を押すだけで必殺技が出る。セリフや演出の確認用
   {
     name: 'おためし　コンボ練習場', start: 'usagi', practice: true, bgm: { song: 'sougen', bpm: 140 },
     sky: ['#7fcaf5', '#e3f6ff'], hill: '#9fdc8a',
@@ -319,7 +320,7 @@ const EXTRA_STAGES = [
       '######################################################################',
     ],
   },
-  // @test-only-end
+  // @dev-only-end
 ];
 const stageDef = i => i >= 100 ? EXTRA_STAGES[i - 100] : STAGES[i];
 

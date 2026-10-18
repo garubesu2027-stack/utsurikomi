@@ -97,12 +97,13 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/18-l'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
-// 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
+const VERSION = '10/18-m'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+// 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
+// 公開版＝'public'（@test-only と @dev-only を取り除く）
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
 const FEATURES = {
-  combo: IS_TEST, // 切り替えコンボ（甲羅アタック・ロケットジャンプ）。公開するときは true にする
+  combo: EDITION !== 'public', // 切り替えコンボ（甲羅アタック・ロケットジャンプ）。テスト版・お試し版はオン。公開するときは true にする
 };
 const FONT = '"Hiragino Maru Gothic ProN","Hiragino Sans","Yu Gothic",sans-serif';
 
