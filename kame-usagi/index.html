@@ -97,7 +97,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/18-h'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/18-j'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
@@ -599,7 +599,7 @@ function loadStage(i) {
     spawnsBox: [], spawnsEnemy: [], coins: [], checkpoints: [], goal: null,
     shooters: [], droppers: [], fakes: [], winds: (S.winds || []).map(o => ({ ...o, t: 0 })),
     boxes: [], enemies: [], rocks: [], arrows: [], particles: [], popups: [], crumble: {}, boulders: [], shake: 0,
-    time: 0, deaths: 0, got: 0, spawn: null, flash: 0, combo: 0, comboT: 0, comboShow: 0, lastMove: null,
+    time: 0, deaths: 0, got: 0, spawn: null, flash: 0, combo: 0, comboT: 0, comboShow: 0, lastMove: null, endLine: null,
   };
   for (let y = 0; y < st.h; y++) for (let x = 0; x < w; x++) {
     const c = base[y][x];
@@ -709,6 +709,23 @@ function chainCombo(move) {
   return st.combo;
 }
 
+// 声：10コンボまでは数を言う（k1〜k10・u1〜u10）、11コンボ以降はカメ「すごいすごい！」とウサギ「まだまだー！」
+const comboCall = (who, n) => n <= 10 ? who + n : who + 'More';
+
+// コンボが途切れたとき、決まった数以上つないでいたらひとこと（大きい数から順に見る）
+const COMBO_END = [
+  { n: 20, voice: 'e20', who: 'usagi', t: 'これもうエンディングだろ' },
+  { n: 10, voice: 'e10', who: 'kame', t: '完走間近だったね！' },
+  { n: 7, voice: 'e7', who: 'usagi', t: 'ゴッド揃いより連チャンしたな' },
+  { n: 5, voice: 'e5', who: 'kame', t: 'なかなかの継続率だったねぇ！' },
+];
+function comboEnd(n) {
+  const L = COMBO_END.find(o => n >= o.n);
+  if (!L) return;
+  Music.voice(L.voice);
+  st.endLine = { who: L.who, t: L.t, life: 150, solid: true };
+}
+
 function killPlayer() {
   if (p.dead || p.inv > 0 || mode !== 'play') return; // ゴール後などは無敵
   p.dead = 50; st.deaths++; Music.sfx('miss'); st.combo = 0; st.comboT = 0;
@@ -720,7 +737,7 @@ function updatePlayer() {
   if (p.swCd > 0) p.swCd--;
   if (p.inv > 0) p.inv--;
   if (p.charge > 0) p.charge--;
-  if (st.comboT > 0 && --st.comboT === 0) st.combo = 0;
+  if (st.comboT > 0 && --st.comboT === 0) { comboEnd(st.combo); st.combo = 0; }
 
   // 交代
   if (pSwitch() && p.swCd <= 0) {
@@ -731,11 +748,11 @@ function updatePlayer() {
     if (FEATURES.combo && from === 'usagi' && (Math.abs(p.vx) >= COMBO.rollMinSpeed || st.S.practice)) {
       // 🐰→🐢 甲羅アタック：ダッシュの勢いのまま甲羅で突進
       p.roll = COMBO.rollTime; p.vx = (Math.sign(p.vx) || p.face) * COMBO.rollSpeed; p.face = Math.sign(p.vx);
-      popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll'); Music.voice('k' + Math.min(10, chainCombo('roll')));
+      popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll'); Music.voice(comboCall('k', chainCombo('roll')));
     } else if (FEATURES.combo && from === 'kame' && (p.charge > 0 || st.S.practice)) {
       // 🐢→🐰 ロケットジャンプ：ガードで受けた衝撃を使って大ジャンプ
       p.vy = -COMBO.rocketJump; p.rocket = true; p.charge = 0; p.roll = 0;
-      popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket'); Music.voice('u' + Math.min(10, chainCombo('rocket')));
+      popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket'); Music.voice(comboCall('u', chainCombo('rocket')));
       burst(p.x + 15, p.y + 30, '#ffb347', 24, 4);
     } else {
       p.roll = 0; Music.sfx('swap');
@@ -1109,6 +1126,7 @@ function clearLine() {
 function drawSpeech(line, cx, cy) {
   ctx.font = `bold 18px ${FONT}`;
   const tw = Math.min(W - 160, ctx.measureText(line.t).width), bw = tw + 90, x = cx - bw / 2;
+  if (line.solid) { ctx.fillStyle = 'rgba(20,24,40,0.78)'; rr(x, cy - 28, bw, 56, 14); ctx.fill(); } // ゲーム中は背景が明るいので下に濃い色
   ctx.fillStyle = line.who === 'kame' ? 'rgba(92,191,74,0.3)' : 'rgba(247,168,196,0.32)'; rr(x, cy - 28, bw, 56, 14); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
   if (line.who === 'kame') drawKame(x + 14, cy - 22, 1, false, 0, 1);
@@ -1389,13 +1407,28 @@ function drawWorld() {
   if (st.combo >= 2 && st.comboT > 0) {
     const n = st.combo, pop = st.comboShow > 0 ? 1 + (st.comboShow / 50) * 0.5 : 1;
     if (st.comboShow > 0) st.comboShow--;
-    const cols = ['#ffe14d', '#ff9a3d', '#ff5ca8', '#b77bff', '#5cd2ff'];
+    // 色は2コンボ＝青から上がっていき、7コンボ以上はレインボー（色が流れる）
+    const cols = ['#5cd2ff', '#b77bff', '#ff5ca8', '#ff9a3d', '#ffe14d'];
+    const label = `${n} COMBO${'!'.repeat(Math.min(3, n - 1))}`, size = 40 + Math.min(5, n - 2) * 5;
     ctx.save(); ctx.translate(W / 2, 118); ctx.scale(pop, pop);
     ctx.globalAlpha = Math.min(1, st.comboT / 20);
-    outlined(`${n} COMBO${'!'.repeat(Math.min(3, n - 1))}`, 0, 0, 40 + Math.min(4, n - 2) * 5, cols[Math.min(cols.length - 1, n - 2)], '#3a1a00');
+    let fill = cols[Math.min(cols.length - 1, n - 2)];
+    if (n >= 7) {
+      ctx.font = `bold ${size}px ${FONT}`;
+      const w = ctx.measureText(label).width;
+      fill = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+      for (let i = 0; i <= 6; i++) fill.addColorStop(i / 6, `hsl(${(i * 60 + st.time * 4) % 360}, 95%, 62%)`);
+    }
+    outlined(label, 0, 0, size, fill, '#3a1a00');
     ctx.restore();
     ctx.fillStyle = 'rgba(20,24,40,0.55)'; rr(W / 2 - 80, 146, 160, 8, 4); ctx.fill();
     ctx.fillStyle = '#ffe14d'; rr(W / 2 - 80, 146, 160 * st.comboT / COMBO.chainTime, 8, 4); ctx.fill();
+  }
+  if (st.endLine && st.endLine.life > 0 && !(st.combo >= 2 && st.comboT > 0)) {
+    ctx.save(); ctx.globalAlpha = Math.min(1, st.endLine.life / 20);
+    drawSpeech(st.endLine, W / 2, 122);
+    ctx.restore();
+    st.endLine.life--;
   }
   if (st.flash) { ctx.fillStyle = `rgba(255,255,255,${st.flash / 30})`; ctx.fillRect(0, 0, W, H); }
 }
