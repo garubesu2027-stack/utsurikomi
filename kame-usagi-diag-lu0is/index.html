@@ -6,6 +6,11 @@
 <button id="t1">① 音楽と同じ鳴らし方（audio）</button>
 <button id="t2">② ゲームの効果音の鳴らし方（WebAudio）</button>
 <button id="t3">③ ②＋「音楽扱いにする」設定をしてから鳴らす</button>
+<h2>A2. 別の鳴らし方（追加）</h2>
+<button id="t4">⑧ 動画（video）として鳴らす</button>
+<button id="t5">⑨ 設定を「auto」に戻してから①と同じ鳴らし方</button>
+<button id="t6">⑩ 無音をずっと流しておいてから②の鳴らし方</button>
+<button id="t7">⑪ mp3ファイルで鳴らす</button>
 <h2>B. 昔のゲーム（どれもステージ1が遊べる）</h2>
 <a class="b" href="74552d1.html">④ 10/16 昼の版（音は全部 audio）</a>
 <a class="b" href="88081d6.html">⑤ 10/16 夜の版（効果音を足した直後）</a>
@@ -22,6 +27,11 @@ let ac=null;
 function wa(f){ if(!ac) ac=new (window.AudioContext||window.webkitAudioContext)(); ac.resume(); const b=ac.createBuffer(1,SR*0.35,SR); b.getChannelData(0).set(beep(f)); const s=ac.createBufferSource(); s.buffer=b; s.connect(ac.destination); s.start(); }
 document.getElementById('t2').onclick=()=>wa(880);
 document.getElementById('t3').onclick=()=>{ try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){} wa(990); info(); };
+document.getElementById('t4').onclick=()=>{const v=document.createElement('video');v.setAttribute('playsinline','');v.src=url;v.style.cssText='width:1px;height:1px';document.body.appendChild(v);v.play().catch(e=>alert('⑧エラー '+e));};
+document.getElementById('t5').onclick=()=>{try{if(navigator.audioSession)navigator.audioSession.type='auto';}catch(e){} new Audio(url).play().catch(e=>alert('⑨エラー '+e)); info();};
+let keep=null;
+document.getElementById('t6').onclick=()=>{ if(!keep){ const n=SR,d=new Float32Array(n); keep=new Audio(wavUrl(d)); keep.loop=true; keep.play().catch(e=>alert('⑩エラー '+e)); } setTimeout(()=>wa(1100),300); };
+document.getElementById('t7').onclick=()=>{new Audio('beep.mp3').play().catch(e=>alert('⑪エラー '+e));};
 function info(){ document.getElementById('info').textContent='audioSession: '+(navigator.audioSession?('あり（'+navigator.audioSession.type+'）'):'なし')+' / '+navigator.userAgent; }
 info();
 </script></body></html>
