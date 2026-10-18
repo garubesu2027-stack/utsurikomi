@@ -97,7 +97,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/18-c'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/18-d'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
@@ -593,7 +593,7 @@ function loadStage(i) {
     spawnsBox: [], spawnsEnemy: [], coins: [], checkpoints: [], goal: null,
     shooters: [], droppers: [], fakes: [], winds: (S.winds || []).map(o => ({ ...o, t: 0 })),
     boxes: [], enemies: [], rocks: [], arrows: [], particles: [], popups: [], crumble: {}, boulders: [], shake: 0,
-    time: 0, deaths: 0, got: 0, spawn: null, flash: 0, combo: 0, comboT: 0, comboShow: 0,
+    time: 0, deaths: 0, got: 0, spawn: null, flash: 0, combo: 0, comboT: 0, comboShow: 0, lastMove: null,
   };
   for (let y = 0; y < st.h; y++) for (let x = 0; x < w; x++) {
     const c = base[y][x];
@@ -688,10 +688,12 @@ const guarded = () => p.shield || p.roll > 0;
 function guardHit() { st.flash = 6; Music.sfx('block'); if (FEATURES.combo && p.char === 'kame') p.charge = COMBO.chargeTime; }
 function popup(t, color) { st.popups.push({ x: p.x + 15, y: p.y - 24, t, color, life: 60 }); }
 
-// 必殺技を COMBO.chainTime 以内に続けて出すとコンボ（2回目から表示）。戻り値＝今のコンボ数
+// 必殺技を COMBO.chainTime 以内に「ちがう技」で続けるとコンボ（甲羅→ロケット→甲羅…・2回目から表示）。戻り値＝今のコンボ数
+// 同じ技を続けたら1からやり直し（走りながら交代を連打するだけで甲羅アタックがつながっていたため・10/18）
 // 3コンボ以上は技の掛け声のかわりに、相棒がほめる（声が重ならないように1つだけ）
-function chainCombo() {
-  st.combo = st.comboT > 0 ? st.combo + 1 : 1;
+function chainCombo(move) {
+  st.combo = st.comboT > 0 && st.lastMove !== move ? st.combo + 1 : 1;
+  st.lastMove = move;
   st.comboT = COMBO.chainTime;
   if (st.combo < 2) return st.combo;
   st.comboShow = 50; st.flash = Math.min(14, 6 + st.combo * 2);
@@ -723,11 +725,11 @@ function updatePlayer() {
     if (FEATURES.combo && from === 'usagi' && Math.abs(p.vx) >= COMBO.rollMinSpeed) {
       // 🐰→🐢 甲羅アタック：ダッシュの勢いのまま甲羅で突進
       p.roll = COMBO.rollTime; p.vx = Math.sign(p.vx) * COMBO.rollSpeed; p.face = Math.sign(p.vx);
-      popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll'); Music.voice(chainCombo() >= 3 ? 'cheerU' : 'roll');
+      popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll'); Music.voice(chainCombo('roll') >= 3 ? 'cheerU' : 'roll');
     } else if (FEATURES.combo && from === 'kame' && p.charge > 0) {
       // 🐢→🐰 ロケットジャンプ：ガードで受けた衝撃を使って大ジャンプ
       p.vy = -COMBO.rocketJump; p.rocket = true; p.charge = 0; p.roll = 0;
-      popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket'); Music.voice(chainCombo() >= 3 ? 'cheerK' : 'rocket');
+      popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket'); Music.voice(chainCombo('rocket') >= 3 ? 'cheerK' : 'rocket');
       burst(p.x + 15, p.y + 30, '#ffb347', 24, 4);
     } else {
       p.roll = 0; Music.sfx('swap');
