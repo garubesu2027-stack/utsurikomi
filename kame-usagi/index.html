@@ -97,7 +97,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/18-k'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/18-l'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
@@ -1013,9 +1013,14 @@ function step() {
       // ジャンプを押しながらスタート＝ステージ7から（ステージ6クリアのごほうび）。まだ無いときは何も起きない
       // PCはスペースがスタートも兼ねるので「↑/W/Zを押しながら」、スマホは「ジャンプボタン（Space）を押しながらタップ（Enter）」
       const cmd = keys.ArrowUp || keys.KeyW || keys.KeyZ || (pressed.Enter && keys.Space);
-      if (!cmd) { totalStats = []; loadStage(0); }
-      else if (STAGES[6]) { totalStats = []; loadStage(6); }
+      const sb = startButtons();
+      if (!cmd) startFrom(sb.length ? sb[startSel].stage : 0);
+      else if (STAGES[6]) startFrom(6);
     }
+    // スタート地点のボタンは←→で選ぶ
+    const sbn = startButtons().length;
+    if (sbn && (pressed.ArrowLeft || pressed.KeyA)) startSel = (startSel + sbn - 1) % sbn;
+    if (sbn && (pressed.ArrowRight || pressed.KeyD)) startSel = (startSel + 1) % sbn;
   } else if (mode === 'intro') {
     Music.play(st.S.bgm);
     if (--modeTimer <= 0 || pOK()) mode = 'play';
@@ -1460,6 +1465,17 @@ function drawHUD() {
   txt('←→移動　↑/スペース ジャンプ　Shift/X 交代　↓ 甲羅ガード　P 一時停止　R やり直し　M 音' + (Music.muted ? 'OFF' : 'ON') + '　Esc タイトル', W / 2, H - 21, 12.5, '#e8ecf8', 'center', 'normal', 640);
 }
 
+// タイトルのスタートボタン（章の頭から選べる・誰でも使える）。そのステージが無いうちは出さない
+const START_POINTS = [0, 3]; // ステージ1から／ステージ4から
+let startSel = 0;
+function startButtons() {
+  const list = START_POINTS.filter(i => STAGES[i]);
+  if (list.length < 2) return [];
+  const bw = 200, gap = 24, x0 = W / 2 - (list.length * bw + (list.length - 1) * gap) / 2;
+  return list.map((stage, k) => ({ x: x0 + k * (bw + gap), y: 278, w: bw, h: 48, label: `ステージ${stage + 1}から`, stage, k }));
+}
+function startFrom(stage) { totalStats = []; loadStage(stage); }
+
 // テスト版：タイトル上部のステージ選びボタン
 function stageButtons() {
   if (!IS_TEST) return [];
@@ -1475,6 +1491,11 @@ cv.addEventListener('pointerdown', e => {
   const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
   const hit = b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
   if (mode === 'title') for (const b of stageButtons()) if (b.open && hit(b)) { totalStats = []; loadStage(b.stage); return; }
+  if (mode === 'title') for (const b of startButtons()) if (hit(b)) {
+    // ジャンプを押しながらタップ＝ステージ7から（ボタンの上でも同じ）
+    if (keys.Space || keys.ArrowUp) { if (STAGES[6]) startFrom(6); return; }
+    startSel = b.k; startFrom(b.stage); return;
+  }
   if (mode === 'pause') { for (const b of pauseButtons()) if (hit(b)) pressed[b.key] = true; return; } // 一時停止中はボタンだけ反応（押し間違い防止）
   if (TOUCH) { setKey('Enter', true); setTimeout(() => setKey('Enter', false), 50); }
 });
@@ -1513,7 +1534,16 @@ function draw() {
     outlined('カメとウサギ', W / 2, 120, 64, '#fff', '#2d5a2a');
     outlined('ふたりで大冒険', W / 2, 190, 40, '#ffe08a', '#6b3a1a');
     txt('カメ＝守り　ウサギ＝ジャンプとスピード。交代しながらゴールを目指せ！', W / 2, 250, 17, '#2b2b3a', 'center', 'bold', W - 40);
-    if (Math.floor(performance.now() / 500) % 2) outlined(TOUCH ? 'タップでスタート' : 'Enter／スペースでスタート', W / 2, 300, 24, '#fff');
+    const sbs = startButtons();
+    if (sbs.length) {
+      for (const b of sbs) {
+        const on = b.k === startSel && !TOUCH;
+        ctx.fillStyle = on ? 'rgba(255,200,80,0.9)' : 'rgba(20,24,40,0.7)'; rr(b.x, b.y, b.w, b.h, 24); ctx.fill();
+        ctx.strokeStyle = on ? '#fff' : '#ffd27a'; ctx.lineWidth = on ? 3 : 2; ctx.stroke();
+        txt(b.label, b.x + b.w / 2, b.y + b.h / 2, 20, on ? '#4a2a10' : '#fff', 'center');
+      }
+      if (!TOUCH && Math.floor(performance.now() / 500) % 2) txt('←→で選んで Enter／スペース', W / 2, 344, 15, '#2b2b3a', 'center');
+    } else if (Math.floor(performance.now() / 500) % 2) outlined(TOUCH ? 'タップでスタート' : 'Enter／スペースでスタート', W / 2, 300, 24, '#fff');
     const bt = STAGES.map((s, i) => `${i + 1}：${best['s' + i] ? fmt(best['s' + i]) : '--'}`).join('　');
     txt((IS_TEST ? 'TEST ' : '') + 'ver ' + VERSION, W - 10, H - 12, 11, IS_TEST ? '#ffd27a' : 'rgba(255,255,255,0.6)', 'right', IS_TEST ? 'bold' : 'normal');
     for (const b of stageButtons()) {
