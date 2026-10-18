@@ -91,7 +91,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/17-h'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/18-a'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'test';
 const IS_TEST = EDITION === 'test';
@@ -262,7 +262,7 @@ const STAGES = [
     // 大岩：trigger マスを越えると x マスから転がり出す（row＝転がる地面の段）。stop マスで end（crash＝砕ける／fall＝穴に落ちる）
     // drop: true は空から落ちてくる。追いつかれたら1発アウト（ガードもきかない）
     boulders: [
-      { trigger: 5, x: -3, row: 11, stop: 52, end: 'crash' },
+      { trigger: 5, x: -4, row: 11, stop: 52, end: 'crash' },
       { trigger: 59, x: 52, row: 7, stop: 74, end: 'fall', drop: true },
     ],
     // ステージ6をクリアしたら第2章クリア：カメとウサギがステージ7への入り方を教える
@@ -303,12 +303,14 @@ const COMBO = {
   rollTime: 62,      // 甲羅アタックの長さ（60で1秒）
   chargeTime: 40,    // ロケットジャンプ：ガードで受けてから交代できる猶予
   rocketJump: 16.5,  // ロケットジャンプの強さ（ウサギの普通のジャンプは12.4）
+  chainTime: 120,    // この時間（60で1秒）以内に次の必殺技を出すとコンボ
 };
 
 // ===================== 大岩（数字を変えると調整できる） =====================
 const BOULDER = {
   speed: 3.6, // 転がる速さ（カメ2.4より速く、ウサギ5.2より遅い。甲羅アタックは7.5）
-  r: 40,      // 半径（2マス分の大きさ）
+  r: 60,      // 見た目の半径（3マス分の大きさ）
+  hit: 46,    // 当たり判定の半径（見た目より少し小さめ＝ちょっと甘め）
 };
 
 // ===================== 入力 =====================
@@ -420,8 +422,14 @@ const Music = (() => {
       if (k % 2 === 1) noise(t, 0.03, 0.06, 7000);
     }
   }
+  // 必殺技のセリフ（VOICEVOXで作ったmp3を埋め込み。カメ＝ずんだもん・ウサギ＝四国めたん）
+  const VOICES = {
+    roll: 'data:audio/mpeg;base64,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', // カメ「こうらアタック！」
+    rocket: 'data:audio/mpeg;base64,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', // ウサギ「ロケットジャンプや！」
+  };
   // 効果音・ジングルの中身（t=鳴らし始め）
   const SFX = {
+    combo: [0.5, t => { [1047, 1319, 1568, 2093].forEach((f, i) => tone(f, t + i * 0.05, 0.14, 'square', 0.07)); noise(t, 0.08, 0.08, 5000); }], // キラララン（コンボ）
     roll: [0.5, t => { // ギュルンッ：低い音が回転しながら上がる＋風切り
       for (let i = 0; i < 4; i++) sweep(180 + i * 60, 420 + i * 90, t + i * 0.045, 0.06, 'square', 0.12);
       noise(t, 0.25, 0.22, 900);
@@ -494,6 +502,15 @@ const Music = (() => {
   const sfxBuf = {};
   for (const name of Object.keys(SFX)) renderBuf('sfx:' + name, SFX[name][0], () => SFX[name][1](0.01)).then(b => { sfxBuf[name] = b; }).catch(() => {});
   let ac = null;
+  // 声は最初に音を鳴らせるようになった時に読み込む（mp3を音のデータに戻す）
+  const voiceBuf = {}; let voiceSrc = null;
+  function loadVoices() {
+    for (const [name, url] of Object.entries(VOICES)) {
+      const bin = atob(url.split(',')[1]), u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      try { ac.decodeAudioData(u8.buffer, b => { voiceBuf[name] = b; }, () => {}); } catch (e) {}
+    }
+  }
 
   // 再生する<audio>。効果音は重なっても鳴るように2つずつ
   const silent = toWavUrl(new Float32Array(SR / 20));
@@ -553,7 +570,7 @@ const Music = (() => {
         // 音の扱いを「動画・音楽の再生」と同じにしておく（Safari。録画にも入りやすくなる）
         try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
         const A = window.AudioContext || window.webkitAudioContext;
-        if (A) { try { ac = new A(); } catch (e) {} }
+        if (A) { try { ac = new A(); loadVoices(); } catch (e) {} }
       }
       if (ac && ac.state !== 'running') ac.resume();
       if (!unlocked) {
@@ -570,10 +587,17 @@ const Music = (() => {
     },
     play(b) { if (want === b && cur === b) return; want = b; start(); },
     stop() { want = null; start(); },
-    sfx(name) {
+    sfx(name, rate = 1) {
       if (!ac || muted || !sfxBuf[name]) return;
-      const src = ac.createBufferSource(); src.buffer = sfxBuf[name];
+      const src = ac.createBufferSource(); src.buffer = sfxBuf[name]; src.playbackRate.value = rate;
       src.connect(ac.destination); src.start();
+    },
+    // セリフ：前のセリフが残っていたら止めてから言う（コンボで重ならないように）
+    voice(name) {
+      if (!ac || muted || !voiceBuf[name]) return;
+      try { if (voiceSrc) voiceSrc.stop(); } catch (e) {}
+      const src = ac.createBufferSource(), g = ac.createGain(); src.buffer = voiceBuf[name]; g.gain.value = 1.4;
+      src.connect(g); g.connect(ac.destination); src.start(); voiceSrc = src;
     },
     jingle(name) { this.stop(); this.sfx(name); },
     toggleMute() {
@@ -659,7 +683,7 @@ function loadStage(i) {
     spawnsBox: [], spawnsEnemy: [], coins: [], checkpoints: [], goal: null,
     shooters: [], droppers: [], fakes: [], winds: (S.winds || []).map(o => ({ ...o, t: 0 })),
     boxes: [], enemies: [], rocks: [], arrows: [], particles: [], popups: [], crumble: {}, boulders: [], shake: 0,
-    time: 0, deaths: 0, got: 0, spawn: null, flash: 0,
+    time: 0, deaths: 0, got: 0, spawn: null, flash: 0, combo: 0, comboT: 0, comboShow: 0,
   };
   for (let y = 0; y < st.h; y++) for (let x = 0; x < w; x++) {
     const c = base[y][x];
@@ -754,9 +778,20 @@ const guarded = () => p.shield || p.roll > 0;
 function guardHit() { st.flash = 6; Music.sfx('block'); if (FEATURES.combo && p.char === 'kame') p.charge = COMBO.chargeTime; }
 function popup(t, color) { st.popups.push({ x: p.x + 15, y: p.y - 24, t, color, life: 60 }); }
 
+// 必殺技を COMBO.chainTime 以内に続けて出すとコンボ（2回目から表示）
+function chainCombo() {
+  st.combo = st.comboT > 0 ? st.combo + 1 : 1;
+  st.comboT = COMBO.chainTime;
+  if (st.combo < 2) return;
+  st.comboShow = 50; st.flash = Math.min(14, 6 + st.combo * 2);
+  Music.sfx('combo', Math.min(1.6, 1 + (st.combo - 2) * 0.12)); // 回数が増えるほど音が上がる
+  const cols = ['#ffe14d', '#ff7ab8', '#7ad7ff', '#9cff7a', '#ffb347'];
+  for (let i = 0; i < Math.min(5, st.combo); i++) burst(p.x + 15, p.y + 16, cols[i], 10, 3 + st.combo * 0.6);
+}
+
 function killPlayer() {
   if (p.dead || p.inv > 0 || mode !== 'play') return; // ゴール後などは無敵
-  p.dead = 50; st.deaths++; Music.sfx('miss');
+  p.dead = 50; st.deaths++; Music.sfx('miss'); st.combo = 0; st.comboT = 0;
   burst(p.x + 15, p.y + 16, p.char === 'kame' ? '#3f9b4f' : '#ffffff', 24, 4);
 }
 
@@ -765,6 +800,7 @@ function updatePlayer() {
   if (p.swCd > 0) p.swCd--;
   if (p.inv > 0) p.inv--;
   if (p.charge > 0) p.charge--;
+  if (st.comboT > 0 && --st.comboT === 0) st.combo = 0;
 
   // 交代
   if (pSwitch() && p.swCd <= 0) {
@@ -775,11 +811,11 @@ function updatePlayer() {
     if (FEATURES.combo && from === 'usagi' && Math.abs(p.vx) >= COMBO.rollMinSpeed) {
       // 🐰→🐢 甲羅アタック：ダッシュの勢いのまま甲羅で突進
       p.roll = COMBO.rollTime; p.vx = Math.sign(p.vx) * COMBO.rollSpeed; p.face = Math.sign(p.vx);
-      popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll');
+      popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll'); Music.voice('roll'); chainCombo();
     } else if (FEATURES.combo && from === 'kame' && p.charge > 0) {
       // 🐢→🐰 ロケットジャンプ：ガードで受けた衝撃を使って大ジャンプ
       p.vy = -COMBO.rocketJump; p.rocket = true; p.charge = 0; p.roll = 0;
-      popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket');
+      popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket'); Music.voice('rocket'); chainCombo();
       burst(p.x + 15, p.y + 30, '#ffb347', 24, 4);
     } else {
       p.roll = 0; Music.sfx('swap');
@@ -841,7 +877,8 @@ function updatePlayer() {
 
   // トゲ（ウサギはアウト）
   if (!N.thornProof) {
-    eachTile({ x: p.x - 1, y: p.y - 1, w: p.w + 2, h: p.h + 2 }, (tx, ty) => { if (tileAt(tx, ty) === '^') killPlayer(); });
+    // 足元だけで判定（左右6ドットずつ甘め。横から触れただけではやられない）
+    eachTile({ x: p.x + 6, y: p.y + p.h - 4, w: p.w - 12, h: 5 }, (tx, ty) => { if (tileAt(tx, ty) === '^') killPlayer(); });
   }
 
   // 崩れる橋（重いカメが乗ると落ちる）
@@ -1009,7 +1046,7 @@ function updateBoulder(b) {
   // 追いつかれたら1発アウト（円とプレイヤーの四角で判定・少し甘め）
   if (!p.dead) {
     const cx = Math.max(p.x, Math.min(b.bx, p.x + p.w)), cy = Math.max(p.y, Math.min(b.by, p.y + p.h));
-    if (Math.hypot(cx - b.bx, cy - b.by) < R - 6) killPlayer();
+    if (Math.hypot(cx - b.bx, cy - b.by) < BOULDER.hit) killPlayer();
   }
 }
 
@@ -1403,9 +1440,10 @@ function drawWorld() {
     ctx.save(); ctx.translate(x, b.by); ctx.rotate(b.ang);
     ctx.fillStyle = '#8a7a68'; ctx.beginPath(); ctx.arc(0, 0, R, 0, 7); ctx.fill();
     ctx.strokeStyle = '#5e5246'; ctx.lineWidth = 3; ctx.stroke();
-    ctx.fillStyle = '#a3927e'; ctx.beginPath(); ctx.arc(-12, -14, 13, 0, 7); ctx.fill();
-    ctx.strokeStyle = '#5e5246'; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.moveTo(-R * 0.7, 6); ctx.lineTo(-10, 10); ctx.lineTo(4, 26); ctx.moveTo(-10, 10); ctx.lineTo(14, -4); ctx.lineTo(R * 0.8, -12); ctx.moveTo(14, -4); ctx.lineTo(22, 18); ctx.stroke();
+    const k = R / 40; // 模様も大きさに合わせる
+    ctx.fillStyle = '#a3927e'; ctx.beginPath(); ctx.arc(-12 * k, -14 * k, 13 * k, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#5e5246'; ctx.lineWidth = 2.5 * k;
+    ctx.beginPath(); ctx.moveTo(-R * 0.7, 6 * k); ctx.lineTo(-10 * k, 10 * k); ctx.lineTo(4 * k, 26 * k); ctx.moveTo(-10 * k, 10 * k); ctx.lineTo(14 * k, -4 * k); ctx.lineTo(R * 0.8, -12 * k); ctx.moveTo(14 * k, -4 * k); ctx.lineTo(22 * k, 18 * k); ctx.stroke();
     ctx.restore();
   }
   // プレイヤー
@@ -1427,6 +1465,17 @@ function drawWorld() {
   for (const q of st.popups) { ctx.globalAlpha = Math.min(1, q.life / 20); outlined(q.t, q.x - cam, q.y, q.size || 20, q.color, q.stroke); }
   ctx.globalAlpha = 1;
   ctx.restore();
+  if (st.combo >= 2 && st.comboT > 0) {
+    const n = st.combo, pop = st.comboShow > 0 ? 1 + (st.comboShow / 50) * 0.5 : 1;
+    if (st.comboShow > 0) st.comboShow--;
+    const cols = ['#ffe14d', '#ff9a3d', '#ff5ca8', '#b77bff', '#5cd2ff'];
+    ctx.save(); ctx.translate(W / 2, 118); ctx.scale(pop, pop);
+    ctx.globalAlpha = Math.min(1, st.comboT / 20);
+    outlined(`${n} COMBO${'!'.repeat(Math.min(3, n - 1))}`, 0, 0, 40 + Math.min(4, n - 2) * 5, cols[Math.min(cols.length - 1, n - 2)], '#3a1a00');
+    ctx.restore();
+    ctx.fillStyle = 'rgba(20,24,40,0.55)'; rr(W / 2 - 80, 146, 160, 8, 4); ctx.fill();
+    ctx.fillStyle = '#ffe14d'; rr(W / 2 - 80, 146, 160 * st.comboT / COMBO.chainTime, 8, 4); ctx.fill();
+  }
   if (st.flash) { ctx.fillStyle = `rgba(255,255,255,${st.flash / 30})`; ctx.fillRect(0, 0, W, H); }
 }
 
