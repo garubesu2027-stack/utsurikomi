@@ -97,7 +97,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/18-j'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/18-k'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 公開版とテスト版の作り分け：build.py が公開版では 'public' に書き換え、@test-only の範囲を取り除く
 const EDITION = 'public';
 const IS_TEST = EDITION === 'test';
@@ -716,7 +716,7 @@ const comboCall = (who, n) => n <= 10 ? who + n : who + 'More';
 const COMBO_END = [
   { n: 20, voice: 'e20', who: 'usagi', t: 'これもうエンディングだろ' },
   { n: 10, voice: 'e10', who: 'kame', t: '完走間近だったね！' },
-  { n: 7, voice: 'e7', who: 'usagi', t: 'ゴッド揃いより連チャンしたな' },
+  { n: 7, voice: 'e7', who: 'usagi', t: 'GOD揃いより連チャンしたな' },
   { n: 5, voice: 'e5', who: 'kame', t: 'なかなかの継続率だったねぇ！' },
 ];
 function comboEnd(n) {
