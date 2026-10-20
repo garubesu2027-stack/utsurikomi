@@ -97,7 +97,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/20-b'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/20-c'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く）
 const EDITION = 'public';
@@ -1574,27 +1574,34 @@ function draw() {
     txt(`${CHARS[st.S.start].name}からスタート`, W / 2, H / 2 + 28, 18, '#fff', 'center');
   }
   if (mode === 'clear' && st.S.finale) {
-    // ステージ6クリア：カメとウサギがステージ7からの入り方を教える（ステージ7が無いうちは「準備中」の看板）
+    // ステージ6クリア：お礼のかけあい＋ステージ7から遊ぶ裏ワザの枠（ボタンの形で見せる・10/20 かめちゃんのラフから）
+    const ready = !!STAGES[st.S.finale.next];
     const pw = Math.min(720, W - 24);
-    ctx.fillStyle = 'rgba(20,24,40,0.85)'; rr(W / 2 - pw / 2, 40, pw, 440, 18); ctx.fill();
-    outlined('ステージクリア！', W / 2, 82, 40, '#ffe08a');
-    txt(`タイム ${fmt(st.time)}${st.newBest ? '　★ベスト更新！' : ''}　コイン ${st.got}/${st.coins.length}　ミス ${st.deaths}`, W / 2, 128, 18, '#fff', 'center', 'bold', pw - 40);
-    drawSpeech({ who: 'kame', t: 'ここまで来てくれてありがとう！' }, W / 2, 192);
-    drawSpeech({ who: 'usagi', t: '次の新しいステージ7は、ここから遊べるようになるで！' }, W / 2, 260);
-    // やり方は枠に分けて目立たせる（セリフに詰めると伝わりにくかった・10/20）
-    ctx.fillStyle = 'rgba(255,224,138,0.14)'; rr(W / 2 - 230, 290, 460, 34, 10); ctx.fill();
-    ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 2; ctx.stroke();
-    txt(TOUCH ? 'タイトルで ジャンプを押しながら タップ' : 'タイトルで ↑ を押しながら Enter', W / 2, 311, 17, '#ffe08a', 'center', 'bold', 440);
-    if (!STAGES[st.S.finale.next]) {
-      // 木の看板
-      const bx = W / 2 - 120, by = 330;
-      ctx.fillStyle = '#7a4d23'; ctx.fillRect(bx + 40, by + 50, 10, 42); ctx.fillRect(bx + 190, by + 50, 10, 42);
-      ctx.fillStyle = '#c98b45'; rr(bx, by, 240, 58, 8); ctx.fill();
-      ctx.strokeStyle = '#7d5326'; ctx.lineWidth = 3; ctx.stroke();
-      ctx.fillStyle = '#ffcf33'; for (let i = 0; i < 6; i++) { ctx.fillRect(bx + 8 + i * 40, by + 6, 20, 5); }
-      txt('ステージ7は準備中', W / 2, by + 34, 22, '#4a2a10', 'center');
-    }
-    txt((TOUCH ? 'タップ' : 'Enter') + (st.i + 1 < STAGES.length ? ' で次のステージへ' : ' でエンディングへ'), W / 2, 456, 16, '#b8c4e8', 'center');
+    ctx.fillStyle = 'rgba(20,24,40,0.88)'; rr(W / 2 - pw / 2, 12, pw, 496, 18); ctx.fill();
+    outlined(`ステージ${st.i + 1}クリア！`, W / 2, 50, 34, '#ffe08a');
+    txt(`タイム ${fmt(st.time)}${st.newBest ? '　★ベスト更新！' : ''}　コイン ${st.got}/${st.coins.length}　ミス ${st.deaths}`, W / 2, 86, 16, '#fff', 'center', 'bold', pw - 40);
+    drawSpeech({ who: 'kame', t: 'ここまで来てくれてありがとう！' }, W / 2, 130);
+    drawSpeech({ who: 'usagi', t: '次のステージも楽しみにしててな！' }, W / 2, 192);
+    // 裏ワザの枠
+    const bw = Math.min(560, pw - 40), bx = W / 2 - bw / 2, by = 232;
+    ctx.fillStyle = 'rgba(120,86,50,0.55)'; rr(bx, by, bw, 178, 14); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,224,138,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+    txt(`ステージ${st.S.finale.next + 1}から遊ぶ裏ワザ！`, W / 2, by + 30, 22, '#ffe08a', 'center');
+    txt(ready ? 'タイトル画面で…' : '次回アップデート後は…', W / 2, by + 62, 16, '#fff', 'center');
+    // キーをボタンの形で：［ジャンプ長押し］＋［スタート］
+    const k1 = TOUCH ? 'ジャンプ長押し' : '↑ 長押し', k2 = TOUCH ? 'タップ' : 'Enter';
+    ctx.font = `bold 20px ${FONT}`;
+    const w1 = ctx.measureText(k1).width + 36, w2 = ctx.measureText(k2).width + 36, gap = 46;
+    let kx = W / 2 - (w1 + gap + w2) / 2; const ky = by + 80;
+    ctx.fillStyle = '#ecd18e'; rr(kx, ky, w1, 46, 9); ctx.fill();
+    txt(k1, kx + w1 / 2, ky + 24, 20, '#222', 'center');
+    txt('＋', kx + w1 + gap / 2, ky + 24, 22, '#fff', 'center');
+    kx += w1 + gap;
+    ctx.fillStyle = '#9ccbec'; rr(kx, ky, w2, 46, 9); ctx.fill();
+    txt(k2, kx + w2 / 2, ky + 24, 20, '#222', 'center');
+    txt(ready ? 'でステージ' + (st.S.finale.next + 1) + 'からスタート！' : 'タイトル画面で入力してね！', W / 2, by + 154, 15, '#fff', 'center');
+    if (!ready) txt(`ステージ${st.S.finale.next + 1}は現在制作中！`, W / 2, 442, 18, '#b8c4e8', 'center');
+    txt((TOUCH ? 'タップ' : 'Enter') + (st.i + 1 < STAGES.length ? ' で次のステージへ' : ' でエンディングへ'), W / 2, 484, 15, '#8f9bc0', 'center');
   } else if (mode === 'clear') {
     panel(300);
     outlined('ステージクリア！', W / 2, H / 2 - 110, 40, '#ffe08a');
