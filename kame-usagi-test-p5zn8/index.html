@@ -9,6 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#1d2433">
 <title>カメとウサギ ふたりで大冒険</title>
+<meta name="apple-mobile-web-app-title" content="かめうさゲーム">
+<meta name="application-name" content="かめうさゲーム">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-512.png">
 <style>
   html,body{margin:0;height:100%;background:#1d2433;}
   body{display:flex;align-items:center;justify-content:center;
@@ -91,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/20-d'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/21-a'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く）
 const EDITION = 'test';
