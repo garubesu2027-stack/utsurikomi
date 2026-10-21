@@ -21,9 +21,9 @@
 <style>
   /* ============================================================
      スマスロ モンスターハンターライズ：サンブレイク CZ判別機
-     AT間のCZ失敗回数・アイキャッチのキャラ・チッチェのセリフから、
+     AT間のCZ失敗回数・アイキャッチのキャラ・チッチェのセリフ・CZ失敗時のランプから、
      BZシナリオの残り方と次のブレイクゾーンの成功期待度を出す。
-     数値の出典：ちょんぼりすた（BZシナリオ・アイコンテーブル・アイキャッチ・セリフ）。設定1の値。
+     数値の出典：ちょんぼりすた（BZシナリオ・アイコンテーブル・アイキャッチ・セリフ・CZ失敗時のランプ）。設定1の値。
      ============================================================ */
 
   :root {
@@ -336,6 +336,23 @@
   }
   .mihon { display: flex; flex-direction: column; gap: 6px; }
   .mihon[hidden] { display: none; }
+  /* CZ失敗時のランプ（緑・赤だけ） */
+  .lamp-box { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  .lamp-q span { white-space: normal; }
+  .lamp-q span small { display: block; margin-left: 0; }
+  .lamp-grid { margin-top: 8px; }
+  .lamp-btn { color: #fff; border-color: rgba(0,0,0,.18); text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+  .lamp-btn { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
+  .lamp-btn span { white-space: nowrap; }
+  .lamp-btn small { font-size: 12px; font-weight: 700; opacity: .95; white-space: nowrap; }
+  .lamp-g { background: linear-gradient(180deg, #5ee584 0, #22c55e 45%, #15803d 100%); }
+  .lamp-r { background: linear-gradient(180deg, #ff7a7a 0, #ef4444 45%, #991b1b 100%); }
+  .lamp-btn[aria-pressed="true"] { outline: 3px solid #1d232b; outline-offset: 2px; }
+  .lamp-btn[aria-pressed="true"] span::before { content: "✓ "; }
+  #lamps.on .lamp-btn[aria-pressed="false"] { filter: grayscale(.85); opacity: .45; }   /* 選んでいない方を薄く */
+  .lamp-now { margin: 8px 0 0; padding: 6px 10px; border-radius: 8px; background: #e3f1e5; color: #1f6b2c; font-weight: 900; font-size: 14px; }
+  .lamp-now[hidden] { display: none; }
+  .lamp-hint { margin-top: 10px; }
   .serif-table { font-size: 13px; table-layout: auto; }
   .serif-table th { font-size: 11px; }
   .serif-table td:last-child { white-space: nowrap; font-weight: 700; }
@@ -351,7 +368,7 @@
   <header class="masthead">
     <div class="eyebrow">スマスロ モンハンサンブレイク</div>
     <h1>CZ（ブレイクゾーン）判別機</h1>
-    <p class="lede">AT後のCZ失敗回数とアイキャッチ・チッチェのセリフから、次のブレイクゾーンの成功期待度を計算します。</p>
+    <p class="lede">AT後のCZ失敗回数とアイキャッチ・チッチェのセリフ・CZ失敗時のランプから、次のブレイクゾーンの成功期待度を計算します。</p>
     <p class="setting-note">※数値はすべて設定1の解析値です</p>
     <p class="byline"><a href="https://hetakuso-super.com/">by かめとうさぎのパチスロブログ</a></p>
   </header>
@@ -378,6 +395,26 @@
       <div class="slots" id="slots"></div>
       <p class="sel-hint" id="selHint"></p>
       <div class="icon-grid" id="icons"><button type="button" id="clearHist" class="reset-btn">リセット</button></div>
+      <div class="lamp-box">
+        <div class="sub-q lamp-q"><span>CZ失敗時のランプを入力する<small>（次回CZレベル示唆）</small></span><button type="button" class="mihon-btn" data-for="mihonLamp" aria-expanded="false">全文 ▼</button></div>
+        <div class="mihon" id="mihonLamp" hidden>
+          <table class="serif-table">
+            <thead><tr><th>ランプの色</th><th>示唆（次回CZ）</th></tr></thead>
+            <tbody>
+              <tr><td>🔵 青</td><td>デフォルト<small>計算には入れない</small></td></tr>
+              <tr><td>🟡 黄</td><td>HI以上期待度UP<small>計算には入れない</small></td></tr>
+              <tr class="use"><td>🟢 緑</td><td>HI以上濃厚</td></tr>
+              <tr class="use"><td>🔴 赤</td><td>SP濃厚</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="icon-grid lamp-grid" id="lamps">
+          <button type="button" class="icon-btn lamp-btn lamp-g" data-v="hi" aria-pressed="false"><span>緑ランプ</span><small>次回HI以上濃厚</small></button>
+          <button type="button" class="icon-btn lamp-btn lamp-r" data-v="sp" aria-pressed="false"><span>赤ランプ</span><small>次回SP濃厚</small></button>
+        </div>
+        <p class="lamp-now" id="lampNow" hidden></p>
+        <p class="hint lamp-hint">クエスト・アイルー福引に失敗したらPUSHボタンを押して確認</p>
+      </div>
       <details class="sug in-card" id="sug">
       <summary><span id="sugHead">＋ アイキャッチ・セリフを追加</span></summary>
       <div class="sug-body">
@@ -428,12 +465,12 @@
         <li>レベルごとの成功期待度は、アイコンテーブルの選択率とテーブル別の成功期待度から計算しています（LOW 約22%・MID 約39%・HI 約52%・SP 成功濃厚）。</li>
         <li>失敗したCZの数だけ、そのシナリオだった可能性を計算し直しています（失敗が続くほど冷遇シナリオが残りやすくなります）。</li>
         <li>失敗したCZの1個目のアイコンを入れると、「そのレベルでそのテーブルが選ばれる確率」も計算に入れます（例：1回目がクエスト（青）＝テーブル1はLOWでしか選ばれないので、シナリオHに絞れます）。</li>
-        <li>アイキャッチは「〇以上」の絞り込みにだけ使っています（キャラの出現率は不明のため）。セリフは「HI以上濃厚」「SP濃厚」だけを使い、「期待度UP（弱・強）」は具体的な振り分けが不明なため選択肢から外しています。</li>
+        <li>アイキャッチは「〇以上」の絞り込みにだけ使っています（キャラの出現率は不明のため）。セリフは「HI以上濃厚」「SP濃厚」だけを使い、「期待度UP（弱・強）」は具体的な振り分けが不明なため選択肢から外しています。CZ失敗時のランプも同じ「次回のBZレベル」の示唆なので、緑＝HI以上濃厚・赤＝SP濃厚だけを使い（青・黄は計算に入れない）、セリフとランプの両方を入れたときは強い方で計算します。</li>
         <li>数値はすべて設定1の値です。アイルー福引は通常のブレイクゾーンと抽選方式が違うため、その回は「BZテーブル不明」として失敗確率をかけず、前後のCZのアイコンだけでシナリオを計算しています。アイルー福引でシナリオの回数が1回進むかは未確認のため、1回進む前提の暫定計算です。</li>
         <li>打つ・やめるの判断は、狙い目の期待値と合わせてご判断ください。</li>
       </ul>
     </details>
-    <p class="credit">解析の出典：<a href="https://chonborista.com/slot/enta-slot/264514/" target="_blank" rel="noopener">ちょんぼりすた</a>（BZシナリオ・アイコンテーブル・アイキャッチ・セリフ）</p>
+    <p class="credit">解析の出典：<a href="https://chonborista.com/slot/enta-slot/264514/" target="_blank" rel="noopener">ちょんぼりすた</a>（BZシナリオ・アイコンテーブル・アイキャッチ・セリフ・CZ失敗時のランプ）</p>
     <button class="reset" id="reset" type="button">入力をすべてリセット</button>
   </section>
 
@@ -507,7 +544,7 @@
 
   // hist＝失敗したCZの1個目のアイコン（テーブル番号・0はアイルー福引＝テーブル不明）を古い順に
   const state = {
-    hist: [], eye: "", serif: "",
+    hist: [], eye: "", serif: "", lamp: "",   // lamp＝CZ失敗時のランプ（hi＝緑・sp＝赤）
     sel: null,   // 入れ替えのために選んでいるマス（保存しない）
     get fails() { return this.hist.length; },
     get tables() { return this.hist; },
@@ -566,7 +603,7 @@
   try { localStorage.removeItem("monhan-cz-v1"); } catch (e) {}   // 前の版（閉じても残る保存）の残りを消す
   const SAVE_KEY = "monhan-cz-v1";
   function save() {
-    try { sessionStorage.setItem(SAVE_KEY, JSON.stringify({ hist: state.hist, eye: state.eye, serif: state.serif })); } catch (e) {}
+    try { sessionStorage.setItem(SAVE_KEY, JSON.stringify({ hist: state.hist, eye: state.eye, serif: state.serif, lamp: state.lamp })); } catch (e) {}
   }
   function load() {
     try {
@@ -575,6 +612,7 @@
       if (Array.isArray(d.hist)) state.hist = d.hist.filter(t => ICONS.some(o => o.t === t)).slice(0, MAX_FAILS);
       if (EYES.some(e => e.key === d.eye)) state.eye = d.eye;
       if (SERIFS.some(x => x.key === d.serif)) state.serif = d.serif;
+      if (d.lamp === "hi" || d.lamp === "sp") state.lamp = d.lamp;
     } catch (e) {}
   }
 
@@ -598,6 +636,11 @@
     // ボタンの状態
     document.querySelectorAll("#eyes button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === state.eye)));
     document.querySelectorAll("#serifs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === state.serif)));
+    document.querySelectorAll("#lamps button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === state.lamp)));
+    document.getElementById("lamps").classList.toggle("on", !!state.lamp);
+    const lampNow = document.getElementById("lampNow");
+    lampNow.hidden = !state.lamp;
+    lampNow.textContent = state.lamp === "hi" ? "✓ 反映中：緑ランプ（次回HI以上濃厚）" : state.lamp === "sp" ? "✓ 反映中：赤ランプ（次回SP濃厚）" : "";
 
     // 折りたたみの見出し：閉じていても反映中の示唆が分かるように
     const sugParts = [];
@@ -607,7 +650,9 @@
     document.getElementById("sugHead").textContent = sugParts.length ? `✓ 反映中：${sugParts.join("・")}` : "＋ アイキャッチ・セリフを追加";
     document.getElementById("sug").classList.toggle("on", sugParts.length > 0);
 
-    const post = posterior(state.fails, state.eye, state.serif);
+    // セリフとランプは同じ「次回BZレベル」の示唆なので、強い方（SP＞HI以上）で計算する
+    const nextLv = [state.serif, state.lamp].includes("sp") ? "sp" : [state.serif, state.lamp].includes("hi") ? "hi" : "";
+    const post = posterior(state.fails, state.eye, nextLv);
     const res = document.getElementById("result");
     const ahead = document.getElementById("ahead");
     const scen = document.getElementById("scen");
@@ -615,7 +660,7 @@
 
     if (!post.ok) {
       res.innerHTML = `<p class="big-label">次のCZ（AT間${nth}回目）</p>
-        <p class="warn">この組み合わせは解析上ありえません。失敗回数・アイキャッチ・セリフを見直してください。</p>`;
+        <p class="warn">この組み合わせは解析上ありえません。失敗回数・アイキャッチ・セリフ・ランプを見直してください。</p>`;
       ahead.innerHTML = ""; ahead.hidden = true;
       scen.innerHTML = ""; scen.hidden = true;
       return;
@@ -706,7 +751,7 @@
     b.innerHTML = `<span>${o.label}</span>`;
     b.addEventListener("click", () => {
       if (state.sel !== null) { state.hist[state.sel] = o.t; state.sel = null; render(); return; }   // 選んだマスだけ入れ替え
-      if (state.fails < MAX_FAILS) { state.hist.push(o.t); state.serif = ""; render(); }   // セリフは次の1回のCZのことなので、1回進んだら「なし」に戻す
+      if (state.fails < MAX_FAILS) { state.hist.push(o.t); state.serif = ""; state.lamp = ""; render(); }   // セリフ・ランプは次の1回のCZのことなので、1回進んだら「なし」に戻す
     });
     icons.appendChild(b);
   }
@@ -737,7 +782,7 @@
     state.sel = state.sel === k ? null : k;
     render();
   });
-  document.getElementById("clearHist").addEventListener("click", () => { state.hist = []; state.eye = ""; state.serif = ""; state.sel = null; render(); });   // 次の台で前の台の示唆が残らないように全部消す
+  document.getElementById("clearHist").addEventListener("click", () => { state.hist = []; state.eye = ""; state.serif = ""; state.lamp = ""; state.sel = null; render(); });   // 次の台で前の台の示唆が残らないように全部消す
   const eyes = document.getElementById("eyes");
   for (const e of EYES) {
     const b = document.createElement("button");
@@ -754,8 +799,12 @@
     b.addEventListener("click", () => { state.serif = s.key; render(); });
     serifs.appendChild(b);
   }
+  document.querySelectorAll("#lamps button").forEach(b => b.addEventListener("click", () => {
+    state.lamp = state.lamp === b.dataset.v ? "" : b.dataset.v;   // もう一度押すと外れる
+    render();
+  }));
   document.getElementById("reset").addEventListener("click", () => {
-    state.hist = []; state.eye = ""; state.serif = ""; state.sel = null;
+    state.hist = []; state.eye = ""; state.serif = ""; state.lamp = ""; state.sel = null;
     render();
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
