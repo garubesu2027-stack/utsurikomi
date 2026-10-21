@@ -101,7 +101,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/22-b'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/22-c'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'public';
@@ -1424,19 +1424,21 @@ function drawWorld() {
   for (const h of st.S.hints) {
     const x = h.x * T - cam, y = h.y * T;
     if (x > W + 400 || x < -500) continue;
-    const m = h.t.match(/^【(.+?)】(.*)$/);
+    const m = h.tag ? [null, h.tag, h.t] : h.t.match(/^【(.+?)】(.*)$/);
     if (m) {
       // 必殺技の使い方：技名を色つきの札にして大きめに（目立たせる・10/20 かめちゃん）
-      const col = m[1].includes('甲羅') ? '#2f9fd8' : '#f08a1c';
-      ctx.font = `bold 18px ${FONT}`; const nw = ctx.measureText(m[1]).width + 24;
-      ctx.font = `bold 20px ${FONT}`; const bw = ctx.measureText(m[2]).width + 28;
-      const hh = 44, tw = nw + bw + 8, k = Math.min(1, (W - 24) / tw); // 縦持ちで入りきらないときは縮める
+      // h.tag＋h.color の看板（分かれ道など）は、さらに大きく・本文も札と同じ色（10/22）
+      const col = h.color || (m[1].includes('甲羅') ? '#2f9fd8' : '#f08a1c');
+      const fs = h.tag ? 24 : 18, bs = h.tag ? 26 : 20;
+      ctx.font = `bold ${fs}px ${FONT}`; const nw = ctx.measureText(m[1]).width + 24;
+      ctx.font = `bold ${bs}px ${FONT}`; const bw = ctx.measureText(m[2]).width + 28;
+      const hh = h.tag ? 56 : 44, tw = nw + bw + 8, k = Math.min(1, (W - 24) / tw); // 縦持ちで入りきらないときは縮める
       ctx.save(); ctx.translate(x, y + 15); ctx.scale(k, k);
-      ctx.fillStyle = 'rgba(255,250,232,0.96)'; rr(0, -22, tw, hh, 10); ctx.fill();
+      ctx.fillStyle = 'rgba(255,250,232,0.96)'; rr(0, -hh / 2, tw, hh, 10); ctx.fill();
       ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.stroke();
-      ctx.fillStyle = col; rr(6, -16, nw, hh - 12, 7); ctx.fill();
-      txt(m[1], 6 + nw / 2, 0, 18, '#fff', 'center');
-      txt(m[2], nw + 20, 0, 20, '#3a2a1a');
+      ctx.fillStyle = col; rr(6, -hh / 2 + 6, nw, hh - 12, 7); ctx.fill();
+      txt(m[1], 6 + nw / 2, 0, fs, '#fff', 'center');
+      txt(m[2], nw + 20, 0, bs, h.color || '#3a2a1a');
       ctx.restore();
       continue;
     }
