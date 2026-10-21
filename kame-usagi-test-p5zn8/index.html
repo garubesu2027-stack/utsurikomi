@@ -95,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/22-a'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/22-b'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'test';
@@ -1188,10 +1188,15 @@ function step() {
     Music.play(TITLE_BGM);
     // 数字キーのステージ選びはテスト版だけ（公開版は毎回ステージ1から）
     if (IS_TEST) for (let i = 0; i < STAGES.length; i++) if (pressed['Digit' + (i + 1)]) { totalStats = []; loadStage(i); }
-    if (pOK()) {
+    // スペース（スマホはジャンプボタン）は押した瞬間ではスタートしない：押しながらEnter／タップ＝ステージ7のため（10/22 押した時点で始まっていた）
+    // PCはスペースを離したときにスタート（押している間にEnterが来たら裏ワザ）。スマホのジャンプボタンだけではスタートしない
+    if (pressed.Space) titleSpace = true;
+    let go = !!pressed.Enter;
+    if (titleSpace && !keys.Space) { titleSpace = false; if (!TOUCH) go = true; }
+    if (go) {
       // ジャンプを押しながらスタート＝ステージ7から（ステージ6クリアのごほうび）。まだ無いときは何も起きない
-      // PCはスペースがスタートも兼ねるので「↑/W/Zを押しながら」、スマホは「ジャンプボタン（Space）を押しながらタップ（Enter）」
-      const cmd = keys.ArrowUp || keys.KeyW || keys.KeyZ || (pressed.Enter && keys.Space);
+      const cmd = keys.ArrowUp || keys.KeyW || keys.KeyZ || keys.Space;
+      titleSpace = false;
       const sb = startButtons();
       if (!cmd) startFrom(sb.length ? sb[startSel].stage : 0);
       else if (STAGES[6]) startFrom(6);
@@ -1662,7 +1667,7 @@ function drawHUD() {
 
 // タイトルのスタートボタン（章の頭から選べる・誰でも使える）。そのステージが無いうちは出さない
 const START_POINTS = [0, 3]; // ステージ1から／ステージ4から
-let startSel = 0;
+let startSel = 0, titleSpace = false; // titleSpace＝タイトルでスペースを押している最中
 function startButtons() {
   const list = START_POINTS.filter(i => STAGES[i]);
   if (list.length < 2) return [];
