@@ -95,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/22-n'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/22-o'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'test';
@@ -336,11 +336,11 @@ const STAGES = [
       { x: 52, w: 2, top: 5, bottom: 11, t: 1 },
     ],
     scales: [
-      { a: { x: 24, w: 2, top: 10, bottom: 11 }, b: { x: 28, w: 2, top: 8, bottom: 10 }, t: 0 },
+      { a: { x: 24, w: 2, top: 8, bottom: 11 }, b: { x: 28, w: 2, top: 8, bottom: 10 }, t: 0 },
     ],
     hints: [
       { x: 2, y: 2, t: '【エレベーター】ウサギで乗ると上がる・カメで乗ると下がる' },
-      { x: 19, y: 2, t: '【てんびん】カメで左の板を沈めると、右の板が上がる！' },
+      { x: 19, y: 2, t: '【てんびん】ウサギで左の板に乗って、カメに交代すると…？' },
       { x: 43, y: 2, t: '矢が来る！ でもカメでガードするとエレベーターが下がっちゃう…' },
     ],
     map: [
