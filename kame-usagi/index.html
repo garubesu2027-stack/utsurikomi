@@ -101,7 +101,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/22-o'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/22-p'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'public';
@@ -871,6 +871,10 @@ function comboEnd(n) {
   st.endLine = { who: L.who, t: L.t, life: 150, solid: true };
 }
 
+// コンボ区間（ステージの comboZone：[x0, x1] マス）：地面を転がっている最中に交代すれば、何にも当たっていなくてもロケットが出る
+// 空中では出ない＝無限に上へ飛べない。全ステージに入れると崖登りが無意味になるので区間だけ（10/22 C案）
+const inComboZone = () => { const z = st.S.comboZone, cx = (p.x + 15) / T; return !!z && p.roll > 0 && p.onGround && cx >= z[0] && cx < z[1] + 1; };
+
 function killPlayer() {
   if (p.dead || p.inv > 0 || mode !== 'play') return; // ゴール後などは無敵
   p.dead = 50; st.deaths++; Music.sfx('miss'); st.combo = 0; st.comboT = 0;
@@ -894,7 +898,7 @@ function updatePlayer() {
       // 🐰→🐢 甲羅アタック：ダッシュの勢いのまま甲羅で突進
       p.roll = COMBO.rollTime; p.vx = (Math.sign(p.vx) || p.face) * COMBO.rollSpeed; p.face = Math.sign(p.vx);
       popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll'); { const v = comboCall('k', chainCombo('roll')); if (v) Music.voice(v); }
-    } else if (FEATURES.combo && from === 'kame' && (p.charge > 0 || st.S.practice)) {
+    } else if (FEATURES.combo && from === 'kame' && (p.charge > 0 || st.S.practice || inComboZone())) {
       // 🐢→🐰 ロケットジャンプ：ガードで受けた衝撃を使って大ジャンプ
       p.vy = -COMBO.rocketJump; p.rocket = true; p.charge = 0; p.roll = 0;
       popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket'); { const v = comboCall('u', chainCombo('rocket')); if (v) Music.voice(v); }
@@ -1214,7 +1218,9 @@ function step() {
   } else if (mode === 'clear') {
     modeTimer++;
     updateWorld();
-    if (modeTimer > 30 && pOK()) {
+    // お城のゴール：門の中へ歩いて消える→門が閉まる（60コマ）までは次へ進めない
+    if (st.S.castle && modeTimer <= 40) p.x += (st.goal.x + 1 - p.x) * 0.12;
+    if (modeTimer > (st.S.castle ? 70 : 30) && pOK()) {
       if (st.i >= 100) mode = 'title';
       else if (st.i + 1 < STAGES.length) loadStage(st.i + 1);
       else { mode = 'end'; modeTimer = 0; Music.jingle('end'); }
@@ -1268,6 +1274,39 @@ function drawKame(x, y, face, shield, anim, scale = 1) {
   ctx.strokeStyle = '#6cc070'; ctx.lineWidth = 1.6;
   ctx.beginPath(); ctx.moveTo(-6, sy - 9); ctx.lineTo(6, sy - 9); ctx.lineTo(9, sy - 1); ctx.moveTo(-6, sy - 9); ctx.lineTo(-9, sy - 1);
   ctx.moveTo(-6, sy - 9); ctx.lineTo(-3, sy - 16); ctx.moveTo(6, sy - 9); ctx.lineTo(3, sy - 16); ctx.stroke();
+  ctx.restore();
+}
+
+// お城（cx＝門のまん中、gy＝地面の高さ、shut＝門の閉まり具合 0〜1）
+function drawCastle(cx, gy, shut) {
+  if (cx < -260 || cx > W + 260) return;
+  // 4分の3の大きさで描く（そのままだと塔と旗が画面の上からはみ出した）。門の当たり判定はゴールの列のまま
+  ctx.save(); ctx.translate(cx, gy); ctx.scale(0.75, 0.75); ctx.translate(-cx, -gy);
+  const wall = '#b9b2a6', dark = '#8f877a', roof = '#6a4fa3';
+  const tower = (x, w, h) => {
+    ctx.fillStyle = wall; ctx.fillRect(x, gy - h, w, h);
+    ctx.fillStyle = dark; for (let i = 0; i < w; i += 16) ctx.fillRect(x + i, gy - h - 10, 10, 10); // ギザギザ
+    ctx.fillStyle = roof; ctx.beginPath(); ctx.moveTo(x - 6, gy - h - 10); ctx.lineTo(x + w / 2, gy - h - 60); ctx.lineTo(x + w + 6, gy - h - 10); ctx.fill();
+    ctx.fillStyle = '#4b3a6e'; rr(x + w / 2 - 7, gy - h + 24, 14, 22, 7); ctx.fill(); // 窓
+    const wave = Math.sin(st.time * 0.1 + x) * 3;
+    ctx.fillStyle = '#ddd'; ctx.fillRect(x + w / 2 - 1, gy - h - 92, 3, 34);
+    ctx.fillStyle = '#e8473c'; ctx.beginPath(); ctx.moveTo(x + w / 2 + 2, gy - h - 92); ctx.lineTo(x + w / 2 + 26, gy - h - 84 + wave); ctx.lineTo(x + w / 2 + 2, gy - h - 76); ctx.fill();
+  };
+  // 本体
+  ctx.fillStyle = wall; ctx.fillRect(cx - 110, gy - 150, 220, 150);
+  ctx.fillStyle = dark; for (let i = 0; i < 220; i += 20) ctx.fillRect(cx - 110 + i, gy - 162, 12, 12);
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 2;
+  for (let y = gy - 150 + 20; y < gy; y += 20) { ctx.beginPath(); ctx.moveTo(cx - 110, y); ctx.lineTo(cx + 110, y); ctx.stroke(); }
+  tower(cx - 150, 56, 210); tower(cx + 94, 56, 210); tower(cx - 26, 52, 190);
+  // 門（アーチ）：中は暗い。入ったら上から木の扉が下りてくる
+  ctx.fillStyle = '#2a2036'; ctx.beginPath(); ctx.moveTo(cx - 32, gy); ctx.lineTo(cx - 32, gy - 56); ctx.arc(cx, gy - 56, 32, Math.PI, 0); ctx.lineTo(cx + 32, gy); ctx.fill();
+  if (shut > 0) {
+    ctx.save(); ctx.beginPath(); ctx.moveTo(cx - 32, gy); ctx.lineTo(cx - 32, gy - 56); ctx.arc(cx, gy - 56, 32, Math.PI, 0); ctx.lineTo(cx + 32, gy); ctx.clip();
+    ctx.fillStyle = '#8a5a2b'; ctx.fillRect(cx - 32, gy - 90, 64, 90 * shut);
+    ctx.strokeStyle = '#5e3c1a'; ctx.lineWidth = 3; for (let i = -16; i <= 16; i += 16) { ctx.beginPath(); ctx.moveTo(cx + i, gy - 90); ctx.lineTo(cx + i, gy - 90 + 90 * shut); ctx.stroke(); }
+    ctx.restore();
+  }
+  ctx.strokeStyle = dark; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(cx - 34, gy); ctx.lineTo(cx - 34, gy - 56); ctx.arc(cx, gy - 56, 34, Math.PI, 0); ctx.lineTo(cx + 34, gy); ctx.stroke();
   ctx.restore();
 }
 
@@ -1459,6 +1498,8 @@ function drawWorld() {
   ctx.save();
   if (st.shake > 0) ctx.translate((Math.random() - 0.5) * st.shake * 0.4, (Math.random() - 0.5) * st.shake * 0.4);
   drawBackground(cam);
+  // コンボ区間はうっすら金色に
+  if (st.S.comboZone) { const [z0, z1] = st.S.comboZone; ctx.fillStyle = 'rgba(255,215,80,0.16)'; ctx.fillRect(z0 * T - cam, 0, (z1 - z0 + 1) * T, 11 * T); }
 
   // ヒント看板
   for (const h of st.S.hints) {
@@ -1504,8 +1545,9 @@ function drawWorld() {
     ctx.fillStyle = k.on ? '#ffcf33' : '#c8c8c8';
     ctx.beginPath(); ctx.moveTo(x + 14, k.y + 2); ctx.lineTo(x + 38, k.y + 12); ctx.lineTo(x + 14, k.y + 22); ctx.fill();
   }
-  // ゴール
-  if (st.goal) {
+  // ゴール（お城のステージは城の門がゴール）
+  if (st.goal && st.S.castle) drawCastle(st.goal.x - cam + 16, st.goal.gy + 80 + T, mode === 'clear' ? Math.min(1, Math.max(0, (modeTimer - 40) / 20)) : 0);
+  else if (st.goal) {
     const gx = st.goal.x - cam, gy = st.goal.gy;
     ctx.fillStyle = '#eee'; ctx.fillRect(gx + 14, gy, 5, 120);
     ctx.fillStyle = '#ffcf33'; ctx.beginPath(); ctx.arc(gx + 16, gy, 6, 0, 7); ctx.fill();
@@ -1600,7 +1642,8 @@ function drawWorld() {
     ctx.beginPath(); ctx.moveTo(-R * 0.7, 6 * k); ctx.lineTo(-10 * k, 10 * k); ctx.lineTo(4 * k, 26 * k); ctx.moveTo(-10 * k, 10 * k); ctx.lineTo(14 * k, -4 * k); ctx.lineTo(R * 0.8, -12 * k); ctx.moveTo(14 * k, -4 * k); ctx.lineTo(22 * k, 18 * k); ctx.stroke();
     ctx.restore();
   }
-  // プレイヤー
+  // プレイヤー（お城に入るときはだんだん消える）
+  if (st.S.castle && mode === 'clear') ctx.globalAlpha = Math.max(0, 1 - modeTimer / 40);
   if (!p.dead && !(p.inv > 0 && Math.floor(p.inv / 4) % 2)) {
     if (p.char === 'kame' && p.roll) drawShellRoll(p.x - cam, p.y, st.time * 0.5 * p.face);
     else if (p.char === 'kame') {
@@ -1614,6 +1657,7 @@ function drawWorld() {
     }
     else drawUsagi(p.x - cam, p.y, p.face, p.anim, p.onGround);
   }
+  ctx.globalAlpha = 1;
   for (const q of st.particles) { ctx.globalAlpha = Math.min(1, q.life / 20); ctx.fillStyle = q.color; ctx.beginPath(); ctx.arc(q.x - cam, q.y, q.r, 0, 7); ctx.fill(); }
   ctx.globalAlpha = 1;
   for (const q of st.popups) { ctx.globalAlpha = Math.min(1, q.life / 20); outlined(q.t, q.x - cam, q.y, q.size || 20, q.color, q.stroke); }
@@ -1811,7 +1855,10 @@ function draw() {
     txt(ready ? 'でステージ' + (st.S.finale.next + 1) + 'からスタート！' : 'タイトル画面で入力してね！', W / 2, by + 154, 15, '#fff', 'center');
     if (!ready) txt(`ステージ${st.S.finale.next + 1}は現在制作中！`, W / 2, 442, 18, '#b8c4e8', 'center');
     txt((TOUCH ? 'タップ' : 'Enter') + (st.i + 1 < STAGES.length ? ' で次のステージへ' : ' でエンディングへ'), W / 2, 484, 15, '#8f9bc0', 'center');
+  } else if (mode === 'clear' && st.S.castle && modeTimer < 70) {
+    // お城に入っていく間はパネルを出さない
   } else if (mode === 'clear') {
+    if (st.S.castle) outlined('……お城の奥から、なにかの気配がする', W / 2, H / 2 - 172, 20, '#d9b8ff');
     panel(300);
     outlined('ステージクリア！', W / 2, H / 2 - 110, 40, '#ffe08a');
     txt(`タイム ${fmt(st.time)}${st.newBest ? '　★ベスト更新！' : ''}`, W / 2, H / 2 - 60, 20, '#fff', 'center');
