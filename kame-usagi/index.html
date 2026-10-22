@@ -101,7 +101,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/22-l'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/22-m'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'public';
@@ -757,7 +757,22 @@ function resetDynamic() {
   st.enemies = st.spawnsEnemy.map(e => ({ x: e.x, y: e.y, w: 30, h: 28, vx: -1, vy: 0, dead: 0 }));
   st.rocks = []; st.arrows = []; st.crumble = {};
   st.boulders = (st.S.boulders || []).map(b => ({ ...b, state: 'wait', bx: 0, by: 0, vy: 0, ang: 0 }));
+  // 重さで動く足場（エレベーター＝lifts／てんびん＝scales）。t は 0〜1（エレベーターは1で下、てんびんは1で a が下・b が上）
+  const plate = (o, mech, down) => ({ x: o.x * T, w: o.w * T, h: 16, y: 0, top: o.top * T, bottom: o.bottom * T, mech, down });
+  st.mechs = []; st.plates = [];
+  for (const l of st.S.lifts || []) { const m = { kind: 'lift', t: l.t || 0 }; st.mechs.push(m); st.plates.push(m.a = plate(l, m, true)); }
+  for (const c of st.S.scales || []) {
+    const m = { kind: 'scale', t: c.t || 0 }; st.mechs.push(m);
+    st.plates.push(m.a = plate(c.a, m, true), m.b = plate(c.b, m, false));
+  }
+  placePlates();
 }
+function placePlates() {
+  for (const q of st.plates) { const t = q.down ? q.mech.t : 1 - q.mech.t; q.y = q.top + (q.bottom - q.top) * t; }
+}
+
+// 乗れる物（箱＋重さで動く足場）
+const solidsOf = () => st.plates.length ? st.boxes.concat(st.plates) : st.boxes;
 
 function makePlayer(s) {
   return { x: s.x, y: s.y, w: 30, h: 32, vx: 0, vy: 0, onGround: false, face: 1, char: s.char,
@@ -928,18 +943,18 @@ function updatePlayer() {
     for (const b of st.boxes) {
       if (b.onGround && overlap(probe, b)) {
         const push = p.vx > 0 ? probe.x + probe.w - b.x : probe.x - (b.x + b.w);
-        moveX(b, push, st.boxes);
+        moveX(b, push, solidsOf());
       }
     }
   }
-  if (moveX(p, p.vx, st.boxes)) {
+  if (moveX(p, p.vx, solidsOf())) {
     if (p.roll) { burst(p.x + 15 + p.face * 16, p.y + 16, '#e8e2d0', 10, 3); p.roll = 0; p.vx = -p.face * 2; p.vy = -4; }
     else p.vx = 0;
   }
   // 強風：軽いウサギだけ流される（カメ・甲羅アタック中は平気）
   const wind = N.heavy ? 0 : windPush(p);
-  if (wind) moveX(p, wind, st.boxes);
-  moveY(p, p.vy, st.boxes);
+  if (wind) moveX(p, wind, solidsOf());
+  moveY(p, p.vy, solidsOf());
   if (Math.abs(p.vx) > 0.3 && p.onGround) p.anim += Math.abs(p.vx) * 0.12;
 
   // トゲ（ウサギはアウト）
@@ -980,11 +995,32 @@ function updatePlayer() {
 }
 
 // ===================== ギミック更新 =====================
+// 重さで動く足場：カメ（重い）と箱は沈める。エレベーターはウサギ（軽い）だけが乗ると上がる。てんびんはウサギでは動かない
+const PLATE_SPEED = 1.6; // 1コマに動くドット数
+const onPlate = (o, q) => o.x < q.x + q.w && o.x + o.w > q.x && Math.abs(o.y + o.h - q.y) < 3;
+function updatePlates() {
+  if (!st.plates.length) return;
+  const riders = q => { const r = st.boxes.filter(b => onPlate(b, q)); if (!p.dead && p.vy >= 0 && onPlate(p, q)) r.push(p); return r; };
+  const heavy = rs => rs.some(o => o !== p || p.char === 'kame');
+  const ride = new Map(st.plates.map(q => [q, riders(q)]));
+  for (const m of st.mechs) {
+    const range = Math.max(...st.plates.filter(q => q.mech === m).map(q => q.bottom - q.top)) || 1, dt = PLATE_SPEED / range;
+    let dir = 0;
+    if (m.kind === 'lift') { const r = ride.get(m.a); dir = heavy(r) ? 1 : r.includes(p) ? -1 : 0; }
+    else { const ha = heavy(ride.get(m.a)), hb = heavy(ride.get(m.b)); dir = ha && !hb ? 1 : hb && !ha ? -1 : 0; }
+    m.t = Math.max(0, Math.min(1, m.t + dir * dt));
+  }
+  const before = new Map(st.plates.map(q => [q, q.y]));
+  placePlates();
+  for (const q of st.plates) { const dy = q.y - before.get(q); if (dy) for (const o of ride.get(q)) o.y += dy; }
+}
+
 function updateWorld() {
+  updatePlates();
   // 箱
   for (const b of st.boxes) {
     b.vy = Math.min(b.vy + GRAV, MAXFALL);
-    moveY(b, b.vy, st.boxes);
+    moveY(b, b.vy, solidsOf());
     if (b.y > st.h * T + 200) b.y = st.h * T + 200;
   }
 
@@ -1049,9 +1085,8 @@ function updateWorld() {
   for (const e of st.enemies) {
     if (e.dead) { e.dead++; e.vy += 0.5; e.y += e.vy; e.x += e.vx; continue; }
     e.vy = Math.min(e.vy + GRAV, MAXFALL);
-    if (st.S.still) e.vx = 0; // 敵がその場から動かないステージ（ステージ8：必殺技の的にする・10/22）
-    if (moveX(e, e.vx, st.boxes)) e.vx *= -1;
-    moveY(e, e.vy, st.boxes);
+    if (moveX(e, e.vx, solidsOf())) e.vx *= -1;
+    moveY(e, e.vy, solidsOf());
     if (e.onGround) {
       const ahead = Math.floor((e.vx > 0 ? e.x + e.w + 2 : e.x - 2) / T);
       if (!isSolid(ahead, Math.floor((e.y + e.h + 2) / T))) e.vx *= -1;
@@ -1495,6 +1530,23 @@ function drawWorld() {
   }
   // 20πコイン
   for (const c of st.coins) if (!c.got) drawCoin(c.x - cam + 16, c.y + 16 + Math.sin(st.time * 0.08 + c.x) * 3, 32);
+  // 重さで動く足場：上から吊るすロープと木の板。てんびんは上で2枚をつなぐ棒と滑車
+  for (const m of st.mechs || []) {
+    const qs = st.plates.filter(q => q.mech === m);
+    ctx.strokeStyle = '#6b4a2a'; ctx.lineWidth = 3;
+    for (const q of qs) for (const dx of [6, q.w - 6]) { ctx.beginPath(); ctx.moveTo(q.x - cam + dx, 30); ctx.lineTo(q.x - cam + dx, q.y); ctx.stroke(); }
+    if (m.kind === 'scale') {
+      const x0 = qs[0].x - cam + qs[0].w / 2, x1 = qs[1].x - cam + qs[1].w / 2;
+      ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(Math.min(x0, x1) - qs[0].w / 2, 30); ctx.lineTo(Math.max(x0, x1) + qs[1].w / 2, 30); ctx.stroke();
+      ctx.fillStyle = '#9b7a52'; ctx.beginPath(); ctx.arc((x0 + x1) / 2, 30, 10, 0, 7); ctx.fill(); ctx.stroke();
+    }
+    for (const q of qs) {
+      const x = q.x - cam;
+      ctx.fillStyle = '#b07a3e'; rr(x, q.y, q.w, q.h, 4); ctx.fill();
+      ctx.strokeStyle = '#6b4a2a'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(x + 4, q.y + 3, q.w - 8, 3);
+    }
+  }
   // 箱
   for (const b of st.boxes) {
     const x = b.x - cam;
