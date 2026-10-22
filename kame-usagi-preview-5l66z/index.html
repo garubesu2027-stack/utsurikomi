@@ -95,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/22-e'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/22-f'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'preview';
@@ -123,7 +123,7 @@ const CHARS = {
 // #=地面 ==石 ^=トゲ C=崩れる橋（カメが乗ると落ちる） V=落石装置 A=矢（左向き） D=矢（右向き）
 // 風はマップ記号ではなくステージの winds で決める（軽いウサギだけ流される）
 // X=ひび割れブロック（甲羅アタックで壊れる） F=ニセモノのゴール（触るとはじかれる。飛び越えるしかない） B=押せる箱 E=敵 *=20πコイン K=中間地点 P=スタート G=ゴール
-// $=連チャンコイン（COMBO.coinMin コンボ以上つないでいる間だけ取れる。ふだんは半透明）
+// $=連チャンコイン（必殺技の最中＝転がっている間／ロケットで飛んでから着地するまでだけ取れる・近くなら吸い寄せる。ふだんは半透明）
 const STAGES = [
   {
     name: 'ステージ1　はじめの草原', start: 'kame', bgm: { song: 'sougen', bpm: 140 },
@@ -313,7 +313,7 @@ const COMBO = {
   chargeTime: 40,    // ロケットジャンプ：ガードで受けてから交代できる猶予
   rocketJump: 16.5,  // ロケットジャンプの強さ（ウサギの普通のジャンプは12.4）
   chainTime: 60,     // この時間（60で1秒）以内に次の必殺技を出すとコンボ（2秒は緩すぎた・10/18）
-  coinMin: 3,        // 連チャンコイン（$）が取れるようになるコンボ数（10/22）
+  magnet: 220,       // 必殺技の最中は連チャンコインをこの距離（ドット）から吸い寄せる（全然取れない＝かめちゃん・10/22）
 };
 
 // ===================== 大岩（数字を変えると調整できる） =====================
@@ -757,7 +757,7 @@ function resetDynamic() {
 
 function makePlayer(s) {
   return { x: s.x, y: s.y, w: 30, h: 32, vx: 0, vy: 0, onGround: false, face: 1, char: s.char,
-    shield: false, coyote: 0, jbuf: 0, swCd: 0, dead: 0, anim: 0, inv: 0, roll: 0, charge: 0, rocket: false };
+    shield: false, coyote: 0, jbuf: 0, swCd: 0, dead: 0, anim: 0, inv: 0, roll: 0, charge: 0, rocket: false, flying: false };
 }
 
 // ===================== 当たり判定 =====================
@@ -852,8 +852,8 @@ function comboEnd(n) {
   st.endLine = { who: L.who, t: L.t, life: 150, solid: true };
 }
 
-// 連チャンコインが取れる状態か（コンボがつながっている間だけ）
-const comboLive = () => st.combo >= COMBO.coinMin && st.comboT > 0;
+// 連チャンコインが取れる状態か（必殺技の最中だけ。最初は3コンボ以上にしたが「全然取れない」ので変更・10/22）
+const comboLive = () => p.roll > 0 || p.flying;
 
 function killPlayer() {
   if (p.dead || p.inv > 0 || mode !== 'play') return; // ゴール後などは無敵
@@ -874,13 +874,13 @@ function updatePlayer() {
     p.char = from === 'kame' ? 'usagi' : 'kame';
     p.swCd = 15; p.shield = false;
     const N = CHARS[p.char];
-    if (FEATURES.combo && from === 'usagi' && (Math.abs(p.vx) >= COMBO.rollMinSpeed || st.S.practice)) {
+    if (FEATURES.combo && from === 'usagi' && (Math.abs(p.vx) >= COMBO.rollMinSpeed || st.S.practice || st.S.fever)) {
       // 🐰→🐢 甲羅アタック：ダッシュの勢いのまま甲羅で突進
       p.roll = COMBO.rollTime; p.vx = (Math.sign(p.vx) || p.face) * COMBO.rollSpeed; p.face = Math.sign(p.vx);
       popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll'); { const v = comboCall('k', chainCombo('roll')); if (v) Music.voice(v); }
-    } else if (FEATURES.combo && from === 'kame' && (p.charge > 0 || st.S.practice)) {
+    } else if (FEATURES.combo && from === 'kame' && (p.charge > 0 || st.S.practice || st.S.fever)) {
       // 🐢→🐰 ロケットジャンプ：ガードで受けた衝撃を使って大ジャンプ
-      p.vy = -COMBO.rocketJump; p.rocket = true; p.charge = 0; p.roll = 0;
+      p.vy = -COMBO.rocketJump; p.rocket = true; p.flying = true; p.charge = 0; p.roll = 0;
       popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket'); { const v = comboCall('u', chainCombo('rocket')); if (v) Music.voice(v); }
       burst(p.x + 15, p.y + 30, '#ffb347', 24, 4);
     } else {
@@ -939,6 +939,8 @@ function updatePlayer() {
   const wind = N.heavy ? 0 : windPush(p);
   if (wind) moveX(p, wind, st.boxes);
   moveY(p, p.vy, st.boxes);
+  if (p.onGround) p.flying = false; // ロケットで飛んでいる最中（着地まで）
+  if (st.S.fever && p.y < 8) { p.y = 8; if (p.vy < 0) p.vy = 0; } // フィーバーは見えない天井（連打でゴールの上を飛び越えてしまうため）
   if (Math.abs(p.vx) > 0.3 && p.onGround) p.anim += Math.abs(p.vx) * 0.12;
 
   // トゲ（ウサギはアウト）
@@ -958,6 +960,11 @@ function updatePlayer() {
   if (p.y > st.h * T + 40) killPlayer();
 
   // コイン・中間地点・ゴール
+  // コンボ中は連チャンコインが寄ってくる
+  if (comboLive()) for (const c of st.coins) if (c.combo && !c.got) {
+    const dx = p.x + p.w / 2 - (c.x + 16), dy = p.y + p.h / 2 - (c.y + 16);
+    if (Math.hypot(dx, dy) < COMBO.magnet) { c.x += dx * 0.18; c.y += dy * 0.18; }
+  }
   for (const c of st.coins) if (!c.got && overlap(p, c) && (!c.combo || comboLive())) {
     c.got = true; st.got++; burst(c.x + 16, c.y + 16, '#ffd34d', 12, 2.5); Music.sfx('coin');
     st.popups.push({ x: c.x + 16, y: c.y + 4, t: '20π', color: '#ffd34d', stroke: '#6b4300', size: 30, life: 45 }); // 取った瞬間に大きく浮かぶ
@@ -1491,14 +1498,14 @@ function drawWorld() {
   for (const c of st.coins) if (!c.got) {
     const cx = c.x - cam + 16, cy = c.y + 16 + Math.sin(st.time * 0.08 + c.x) * 3;
     if (!c.combo) { drawCoin(cx, cy, 32); continue; }
-    // 連チャンコイン：コンボ中は虹色の輪つきで本物に、ふだんは半透明＋「3連」の札
+    // 連チャンコイン：必殺技の最中は虹色の輪つきで本物に、ふだんは半透明＋「必殺技」の札
     if (comboLive()) {
       ctx.strokeStyle = `hsl(${(st.time * 8 + c.x) % 360},90%,60%)`; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.arc(cx, cy, 22, 0, 7); ctx.stroke();
       drawCoin(cx, cy, 32);
     } else {
       ctx.save(); ctx.globalAlpha = 0.35; drawCoin(cx, cy, 32); ctx.restore();
-      outlined(COMBO.coinMin + '連', cx, cy - 24, 12, '#ffe08a');
+      outlined('必殺技', cx, cy - 24, 12, '#ffe08a');
     }
   }
   // 箱
