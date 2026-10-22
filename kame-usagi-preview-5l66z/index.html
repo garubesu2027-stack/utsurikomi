@@ -95,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/22-d'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/22-e'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'preview';
@@ -123,6 +123,7 @@ const CHARS = {
 // #=地面 ==石 ^=トゲ C=崩れる橋（カメが乗ると落ちる） V=落石装置 A=矢（左向き） D=矢（右向き）
 // 風はマップ記号ではなくステージの winds で決める（軽いウサギだけ流される）
 // X=ひび割れブロック（甲羅アタックで壊れる） F=ニセモノのゴール（触るとはじかれる。飛び越えるしかない） B=押せる箱 E=敵 *=20πコイン K=中間地点 P=スタート G=ゴール
+// $=連チャンコイン（COMBO.coinMin コンボ以上つないでいる間だけ取れる。ふだんは半透明）
 const STAGES = [
   {
     name: 'ステージ1　はじめの草原', start: 'kame', bgm: { song: 'sougen', bpm: 140 },
@@ -312,6 +313,7 @@ const COMBO = {
   chargeTime: 40,    // ロケットジャンプ：ガードで受けてから交代できる猶予
   rocketJump: 16.5,  // ロケットジャンプの強さ（ウサギの普通のジャンプは12.4）
   chainTime: 60,     // この時間（60で1秒）以内に次の必殺技を出すとコンボ（2秒は緩すぎた・10/18）
+  coinMin: 3,        // 連チャンコイン（$）が取れるようになるコンボ数（10/22）
 };
 
 // ===================== 大岩（数字を変えると調整できる） =====================
@@ -728,13 +730,13 @@ function loadStage(i) {
   for (let y = 0; y < st.h; y++) for (let x = 0; x < w; x++) {
     const c = base[y][x];
     const px = x * T, py = y * T;
-    if ('PBEK*GF'.includes(c)) base[y][x] = ' ';
+    if ('PBEK*GF$'.includes(c)) base[y][x] = ' ';
     if (c === 'F') st.fakes.push({ x: px + 4, y: py - 80, w: 32, h: 120, open: false });
     if (c === 'P') st.spawn = { x: px + 5, y: py + T - 32, char: S.start };
     if (c === 'B') st.spawnsBox.push({ x: px, y: py });
     if (c === 'E') st.spawnsEnemy.push({ x: px + 5, y: py + 12 });
     if (c === 'K') st.checkpoints.push({ x: px + 8, y: py - 30, w: 24, h: 70, on: false });
-    if (c === '*') st.coins.push({ x: px + 4, y: py + 4, w: 32, h: 32, got: false });
+    if (c === '*' || c === '$') st.coins.push({ x: px + 4, y: py + 4, w: 32, h: 32, got: false, combo: c === '$' });
     // ゴールの当たり判定は空の上まで（ウサギが旗を飛び越えてもクリア）。見た目の旗の位置は gy で別に持つ
     if (c === 'G') st.goal = { x: px + 4, y: -200, w: 32, h: py + T + 200, gy: py - 80 };
     if (c === 'A' || c === 'D') st.shooters.push({ tx: x, ty: y, dir: c === 'A' ? -1 : 1, t: (x * 23) % 110 });
@@ -850,6 +852,9 @@ function comboEnd(n) {
   st.endLine = { who: L.who, t: L.t, life: 150, solid: true };
 }
 
+// 連チャンコインが取れる状態か（コンボがつながっている間だけ）
+const comboLive = () => st.combo >= COMBO.coinMin && st.comboT > 0;
+
 function killPlayer() {
   if (p.dead || p.inv > 0 || mode !== 'play') return; // ゴール後などは無敵
   p.dead = 50; st.deaths++; Music.sfx('miss'); st.combo = 0; st.comboT = 0;
@@ -953,7 +958,7 @@ function updatePlayer() {
   if (p.y > st.h * T + 40) killPlayer();
 
   // コイン・中間地点・ゴール
-  for (const c of st.coins) if (!c.got && overlap(p, c)) {
+  for (const c of st.coins) if (!c.got && overlap(p, c) && (!c.combo || comboLive())) {
     c.got = true; st.got++; burst(c.x + 16, c.y + 16, '#ffd34d', 12, 2.5); Music.sfx('coin');
     st.popups.push({ x: c.x + 16, y: c.y + 4, t: '20π', color: '#ffd34d', stroke: '#6b4300', size: 30, life: 45 }); // 取った瞬間に大きく浮かぶ
   }
@@ -1483,7 +1488,19 @@ function drawWorld() {
     } else outlined('GOAL', gx + 17, gy - 16, 16, '#fff');
   }
   // 20πコイン
-  for (const c of st.coins) if (!c.got) drawCoin(c.x - cam + 16, c.y + 16 + Math.sin(st.time * 0.08 + c.x) * 3, 32);
+  for (const c of st.coins) if (!c.got) {
+    const cx = c.x - cam + 16, cy = c.y + 16 + Math.sin(st.time * 0.08 + c.x) * 3;
+    if (!c.combo) { drawCoin(cx, cy, 32); continue; }
+    // 連チャンコイン：コンボ中は虹色の輪つきで本物に、ふだんは半透明＋「3連」の札
+    if (comboLive()) {
+      ctx.strokeStyle = `hsl(${(st.time * 8 + c.x) % 360},90%,60%)`; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(cx, cy, 22, 0, 7); ctx.stroke();
+      drawCoin(cx, cy, 32);
+    } else {
+      ctx.save(); ctx.globalAlpha = 0.35; drawCoin(cx, cy, 32); ctx.restore();
+      outlined(COMBO.coinMin + '連', cx, cy - 24, 12, '#ffe08a');
+    }
+  }
   // 箱
   for (const b of st.boxes) {
     const x = b.x - cam;
