@@ -95,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/22-j'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/22-k'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'preview';
@@ -1404,14 +1404,8 @@ function drawBackground(cam) {
 function drawWorld() {
   const clampCam = c => Math.max(0, Math.min(st.w * T - W, c));
   let cam;
-  if (W < 960 && !IS_TEST) {
-    // 公開版・お試し版はまだ前の動き（向いている方へ寄せる）。マリオ式がOKになったらこの分岐ごと消す
-    const target = clampCam(p.x + 15 - W / 2 + p.face * W * 0.2);
-    if (st.cam == null || Math.abs(st.cam - target) > W) st.cam = target;
-    st.cam += (target - st.cam) * 0.08;
-    cam = Math.round(st.cam);
-  } else if (W < 960) {
-    // 縦持ち：マリオ式（10/22-j テスト版だけ）。キャラが画面の3〜4.5割の範囲にいる間は画面を動かさず、はみ出した分だけ押して動かす
+  if (W < 960) {
+    // 縦持ち：マリオ式（10/22-j テスト版→10/22-k 公開版にも）。キャラが画面の3〜4.5割の範囲にいる間は画面を動かさず、はみ出した分だけ押して動かす
     // （前は向きに合わせて前方へ寄せていて、振り向いただけで画面が動くのが微妙だった・10/22 かめちゃんの知り合い）
     const px = p.x + 15;
     if (st.cam == null || Math.abs(st.cam - (px - W / 2)) > W) st.cam = clampCam(px - W * 0.4);
