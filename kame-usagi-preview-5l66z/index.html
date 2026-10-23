@@ -95,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/23-f'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/23-g'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'preview';
@@ -753,6 +753,7 @@ function resetDynamic() {
   st.tiles = st.base.map(r => r.slice());
   st.boxes = st.spawnsBox.map(b => ({ x: b.x, y: b.y, w: T, h: T, vy: 0, onGround: false }));
   st.enemies = st.spawnsEnemy.map(e => ({ x: e.x, y: e.y, w: 30, h: 28, vx: -1, vy: 0, dead: 0 }));
+  st.ambushed = false; // お城の手下（ステージの ambush）はやられたらもう一度出てくる
   st.rocks = []; st.arrows = []; st.crumble = {};
   st.boulders = (st.S.boulders || []).map(b => ({ ...b, state: 'wait', bx: 0, by: 0, vy: 0, ang: 0 }));
   // 重さで動く足場（エレベーター＝lifts／てんびん＝scales）。t は 0〜1（エレベーターは1で下、てんびんは1で a が下・b が上）
@@ -1017,8 +1018,19 @@ function updatePlates() {
   for (const q of st.plates) { const dy = q.y - before.get(q); if (dy) for (const o of ride.get(q)) o.y += dy; }
 }
 
+// お城の手下：ステージの ambush（x マスを越えて、足元が row 段より上になったら）、門から敵が押し寄せてくる
+function updateAmbush() {
+  const a = st.S.ambush;
+  if (!a || st.ambushed || p.dead || mode !== 'play') return;
+  if ((p.x + 15) / T < a.x || (p.y + p.h) / T > a.row + 0.2) return;
+  st.ambushed = true; st.shake = 25; Music.sfx('break');
+  st.popups.push({ x: p.x + 15, y: p.y - 30, t: '手下が来た！', color: '#ffd27a', life: 70 });
+  for (const ex of a.spawns) st.enemies.push({ x: ex * T + 5, y: a.row * T - 28, w: 30, h: 28, vx: -(a.speed || 1.6), vy: 0, dead: 0 });
+}
+
 function updateWorld() {
   updatePlates();
+  updateAmbush();
   // 箱
   for (const b of st.boxes) {
     b.vy = Math.min(b.vy + GRAV, MAXFALL);
@@ -1559,7 +1571,7 @@ function drawWorld() {
   if (st.goal && st.S.castle) {
     const cx = st.goal.x - cam + 16;
     // お城が画面に入ってきたら「なにかの気配」を1回だけ出す（端末の画面の幅で見え始めが違うので、描くときに判定）
-    if (!st.omenShown && mode === 'play' && cx - 90 < W) { st.omenShown = true; st.omen = 200; }
+    if (!st.omenShown && mode === 'play' && cx - 90 < W) { st.omenShown = true; st.omen = 200; st.shake = 45; Music.sfx('break'); } // ゴゴゴ…と揺れる
     drawCastle(cx, st.goal.gy + 80 + T, mode === 'clear' ? Math.min(1, Math.max(0, (modeTimer - 40) / 20)) : 0);
   }
   else if (st.goal) {
