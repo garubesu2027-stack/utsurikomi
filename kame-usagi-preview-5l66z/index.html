@@ -95,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/23-a'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/23-b'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'preview';
@@ -1698,8 +1698,9 @@ function drawHUD() {
   // お城の手前のひとこと（だんだん消える）
   if (st && st.omen > 0) {
     ctx.globalAlpha = Math.min(1, st.omen / 30, (200 - st.omen) / 15);
-    ctx.fillStyle = 'rgba(30,20,50,0.7)'; rr(W / 2 - 230, 104, 460, 48, 12); ctx.fill();
-    outlined('……お城の奥から、なにかの気配がする', W / 2, 128, 22, '#e3c8ff');
+    // 画面の真ん中より少し上（上のほうだとメニューに近くて目に入りにくい・10/23）
+    ctx.fillStyle = 'rgba(30,20,50,0.7)'; rr(W / 2 - 230, H / 2 - 84, 460, 48, 12); ctx.fill();
+    outlined('……お城の奥から、なにかの気配がする', W / 2, H / 2 - 60, 22, '#e3c8ff');
     ctx.globalAlpha = 1;
   }
   // キャラカード
