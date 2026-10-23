@@ -95,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/23-d'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/23-e'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'test';
@@ -298,6 +298,8 @@ const STAGES = [
   // @test-only-start 第3章（ステージ7〜）：テスト版だけ。公開するときに印を外す
   {
     name: 'ステージ7　運命の分かれ道', start: 'kame', bgm: { song: 'sougen', bpm: 150, tr: 4 },
+    // 隠し要素（公表しない）：コインは上8・下2で1回では全部取れない。何回かに分けて10枚そろえたらクリア時にこのかけあい（10/23 かめちゃん考案）
+    coinComplete: [{ who: 'kame', t: 'え、両方のルート取ったの！？' }, { who: 'usagi', t: '甲賀の出身なので！' }],
     sky: ['#9fb4e8', '#f3e6ff'], hill: '#9a9ad0',
     // 上の道＝波乱ルート（ゴール手前まで穴なし・敵7・足元の矢3・頭の高さの矢2）／下の道＝安定ルート（敵なし・トゲ4か所・落石13・床すれすれの矢2をカメでガード）
     // 2つの道はゴールの手前まで分かれたまま。上から下へは落ちない・下からは上に戻れない。中間は道ごとに1つ（10/23 かめちゃん）
@@ -458,6 +460,10 @@ const pOK = () => pressed.Enter || pressed.Space;
 let best = {};
 try { best = JSON.parse(localStorage.getItem('kameusagi-best') || '{}'); } catch (e) { best = {}; }
 function saveBest() { try { localStorage.setItem('kameusagi-best', JSON.stringify(best)); } catch (e) {} }
+// 取ったコインの記録（ステージの coinComplete がある所だけ。何回かに分けて全部取ったら隠しセリフ）
+let coinLog = {};
+try { coinLog = JSON.parse(localStorage.getItem('kameusagi-coinlog') || '{}'); } catch (e) { coinLog = {}; }
+function saveCoinLog() { try { localStorage.setItem('kameusagi-coinlog', JSON.stringify(coinLog)); } catch (e) {} }
 
 // ===================== BGM（WebAudioでその場で鳴らす・音声ファイル不要） =====================
 // 曲の書き方：1小節=8コマ（8分音符）。音名=鳴らす／-=伸ばす／.=休み。bass は小節ごとの根音
@@ -1273,6 +1279,13 @@ function stageClear() {
   const key = 's' + st.i;
   if (!best[key] || st.time < best[key]) { best[key] = st.time; st.newBest = true; saveBest(); }
   (totalStats = totalStats || []).push({ i: st.i, time: st.time, deaths: st.deaths, got: st.got, all: st.coins.length });
+  if (st.S.coinComplete) {
+    // 隠し要素（公表しない）：1回では全部取れないステージで、何回かのプレイで合わせて全部取ったら特別なかけあい
+    const got = new Set(coinLog[key] || []);
+    st.coins.forEach((c, i) => { if (c.got) got.add(i); });
+    coinLog[key] = [...got]; saveCoinLog();
+    st.allCoins = got.size >= st.coins.length;
+  }
   st.line = clearLine();
   burst(st.goal.x + 16, st.goal.gy + 20, '#ffe14d', 40, 5);
 }
@@ -1444,6 +1457,7 @@ const MISS_LINES = { kame: n => `あと${n}枚残ってるよ〜`, usagi: n => `
 function clearLine() {
   const total = st.coins.length, left = total - st.got;
   if (!total) return null;
+  if (st.allCoins) return st.S.coinComplete; // 隠しセリフ（2人のかけあい＝配列）
   if (left === 0) { const L = COIN_LINES[p.char]; return { who: p.char, t: L[Math.floor(Math.random() * L.length)] }; }
   const other = p.char === 'kame' ? 'usagi' : 'kame';
   return { who: other, t: MISS_LINES[other](left) };
@@ -1985,8 +1999,9 @@ function draw() {
     outlined('ステージクリア！', W / 2, H / 2 - 110, 40, '#ffe08a');
     txt(`タイム ${fmt(st.time)}${st.newBest ? '　★ベスト更新！' : ''}`, W / 2, H / 2 - 60, 20, '#fff', 'center');
     txt(`コイン ${st.got}/${st.coins.length}　ミス ${st.deaths}`, W / 2, H / 2 - 28, 20, '#fff', 'center');
-    if (st.line) drawSpeech(st.line, W / 2, H / 2 + 30);
-    txt((TOUCH ? 'タップ' : 'Enter') + (st.i >= 100 ? ' でタイトルへ' : st.i + 1 < STAGES.length ? ' で次のステージへ' : ' でエンディングへ'), W / 2, H / 2 + 112, 16, '#b8c4e8', 'center');
+    if (Array.isArray(st.line)) st.line.forEach((l, i) => drawSpeech(l, W / 2, H / 2 + 24 + i * 60));
+    else if (st.line) drawSpeech(st.line, W / 2, H / 2 + 30);
+    txt((TOUCH ? 'タップ' : 'Enter') + (st.i >= 100 ? ' でタイトルへ' : st.i + 1 < STAGES.length ? ' で次のステージへ' : ' でエンディングへ'), W / 2, H / 2 + (Array.isArray(st.line) ? 128 : 112), 16, '#b8c4e8', 'center');
   }
   if (mode === 'end') {
     panel(260);
