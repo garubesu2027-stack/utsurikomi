@@ -95,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/22-p'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/23-a'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'test';
@@ -360,36 +360,33 @@ const STAGES = [
     ],
   },
   {
-    name: 'ステージ9　お城への道', start: 'usagi', castle: true, comboZone: [60, 84], bgm: { song: 'hashi', bpm: 170, tr: 3 },
+    name: 'ステージ9　お城への道', start: 'usagi', castle: true, bgm: { song: 'hashi', bpm: 170, tr: 3 },
     sky: ['#c9a3e8', '#ffe9d6'], hill: '#b394c9',
-    // 第3章のまとめ：①小さい分かれ道（7）②てんびん→エレベーター（8）③中間④コンボ区間（comboZone：転がりながら交代でロケット）⑤ニセゴール⑥矢の崖をロケット→お城の門に入ってクリア（castle）
-    lifts: [
-      { x: 46, w: 2, top: 3, bottom: 6, t: 1 },
-    ],
+    // 第3章のまとめ：①小さい分かれ道（7）②てんびん（8）③中間→最後の試練（崩れる橋＋矢／トゲ＋落石／敵のいる足場）
+    // ④やっと着いた旗はニセゴール ⑤矢の崖をロケット→お城の門に入ってクリア（castle）。お城が見えると「なにかの気配」
+    // （10/23 かめちゃん：ルートの看板・エレベーター・コンボ区間をやめて、ニセゴールの前をちょい難しめに）
     scales: [
       { a: { x: 33, w: 2, top: 8, bottom: 11 }, b: { x: 37, w: 2, top: 8, bottom: 10 }, t: 0 },
     ],
     hints: [
-      { x: 4, y: 4, tag: '波乱ルート', color: '#d81717', t: '近道だけど…' },
-      { x: 4, y: 9, tag: '安定ルート', color: '#2f6fd8', t: '時間はかかるけど…' },
-      { x: 29, y: 2, t: 'てんびん→エレベーター。カメとウサギを使い分けて！' },
-      { x: 58, y: 2, t: '【コンボ区間】ここだけは転がってる間に交代でロケット！' },
-      { x: 94, y: 2, t: '矢をガード→ロケットで、お城の前へ！' },
+      { x: 29, y: 2, t: 'てんびん！ ウサギで左の板に乗って、カメに交代' },
+      { x: 57, y: 2, t: '崩れる橋はウサギで。矢はジャンプでかわせ！' },
+      { x: 100, y: 2, t: '矢をガード→ロケットで、お城の前へ！' },
     ],
     map: [
       '',
       '',
-      '                                                  * *',
-      '                                                ######',
-      '                                              * ######            *         *       *',
-      '                                          *     ######              *     *   *',
-      '                  *               *   *#######  ######          *                                   *  *  G',
-      '             *  E     E *              #######  ######                                 *    ######################',
-      '            ##V###  #V## #V#           #######  ######                *                     ######################',
-      '                                       #######  ######                          *           ######################',
-      '  P                                    #######  ######   K    *         *         *   F  #  A#####################',
-      '############       *        ######################################^^^#####^^^#####################################',
-      '##################################################################################################################',
+      '',
+      '',
+      '                                              *   *K',
+      '                                          *     ######',
+      '                  *               *   *#######  ######                 =V=V=V=V=    * *               *  *      G',
+      '             *  E     E *              #######  ######                            *   E           ######################',
+      '            ##V###  #V## #V#           #######  ######                            E  ##           ######################',
+      '                                       #######  ######        *  *  *   *  *  *  ##      *        ######################',
+      '  P                                    #######  ######                A                     F  #  A#####################',
+      '############       *        ################################CCCCCCCC###^^^^^^^^^#       ################################',
+      '############################################################        #############       ################################',
     ],
   },
   // @test-only-end
@@ -1108,7 +1105,7 @@ function updatePlayer() {
     const dir = p.x + p.w / 2 < f.x + f.w / 2 ? -1 : 1;
     p.vx = dir * 6; p.vy = -6; p.roll = 0; p.x = dir < 0 ? f.x - p.w - 1 : f.x + f.w + 1;
     st.flash = 6; burst(f.x + 16, p.y + 16, '#b05cff', 16, 3.5);
-    popup(f.open ? 'ニセモノだってば！' : 'ニセモノだよ〜ん！ ウサギで飛び越えて！', '#d9a3ff');
+    popup(f.open ? '偽物だってば😝 ウサギで跳び越えて！' : '偽物だよー😝', '#d9a3ff');
     f.open = true;
   }
   if (st.goal && overlap(p, st.goal)) stageClear();
@@ -1227,6 +1224,7 @@ function updateWorld() {
   for (const q of st.popups) { q.y -= 0.7; q.life--; }
   st.popups = st.popups.filter(q => q.life > 0);
   if (st.flash > 0) st.flash--;
+  if (st.omen > 0) st.omen--;
 }
 
 function updateBoulder(b) {
@@ -1662,7 +1660,12 @@ function drawWorld() {
     ctx.beginPath(); ctx.moveTo(x + 14, k.y + 2); ctx.lineTo(x + 38, k.y + 12); ctx.lineTo(x + 14, k.y + 22); ctx.fill();
   }
   // ゴール（お城のステージは城の門がゴール）
-  if (st.goal && st.S.castle) drawCastle(st.goal.x - cam + 16, st.goal.gy + 80 + T, mode === 'clear' ? Math.min(1, Math.max(0, (modeTimer - 40) / 20)) : 0);
+  if (st.goal && st.S.castle) {
+    const cx = st.goal.x - cam + 16;
+    // お城が画面に入ってきたら「なにかの気配」を1回だけ出す（端末の画面の幅で見え始めが違うので、描くときに判定）
+    if (!st.omenShown && mode === 'play' && cx - 90 < W) { st.omenShown = true; st.omen = 200; }
+    drawCastle(cx, st.goal.gy + 80 + T, mode === 'clear' ? Math.min(1, Math.max(0, (modeTimer - 40) / 20)) : 0);
+  }
   else if (st.goal) {
     const gx = st.goal.x - cam, gy = st.goal.gy;
     ctx.fillStyle = '#eee'; ctx.fillRect(gx + 14, gy, 5, 120);
@@ -1811,6 +1814,13 @@ function drawWorld() {
 function fmt(f) { const s = f / 60; return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`; }
 
 function drawHUD() {
+  // お城の手前のひとこと（だんだん消える）
+  if (st && st.omen > 0) {
+    ctx.globalAlpha = Math.min(1, st.omen / 30, (200 - st.omen) / 15);
+    ctx.fillStyle = 'rgba(30,20,50,0.7)'; rr(W / 2 - 230, 104, 460, 48, 12); ctx.fill();
+    outlined('……お城の奥から、なにかの気配がする', W / 2, 128, 22, '#e3c8ff');
+    ctx.globalAlpha = 1;
+  }
   // キャラカード
   const RW = W < 960 ? 196 : 250, LW = W < 960 ? W - 32 - RW : 430;
   ctx.fillStyle = 'rgba(20,24,40,0.72)'; rr(12, 12, LW, 64, 12); ctx.fill();
@@ -1974,7 +1984,6 @@ function draw() {
   } else if (mode === 'clear' && st.S.castle && modeTimer < 70) {
     // お城に入っていく間はパネルを出さない
   } else if (mode === 'clear') {
-    if (st.S.castle) outlined('……お城の奥から、なにかの気配がする', W / 2, H / 2 - 172, 20, '#d9b8ff');
     panel(300);
     outlined('ステージクリア！', W / 2, H / 2 - 110, 40, '#ffe08a');
     txt(`タイム ${fmt(st.time)}${st.newBest ? '　★ベスト更新！' : ''}`, W / 2, H / 2 - 60, 20, '#fff', 'center');
