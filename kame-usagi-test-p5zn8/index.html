@@ -95,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/23-e'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/23-f'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'test';
@@ -359,6 +359,8 @@ const STAGES = [
   },
   {
     name: 'ステージ9　お城への道', start: 'usagi', castle: true, bgm: { song: 'hashi', bpm: 170, tr: 3 },
+    // 第3章のしめ：お城に入ったあと、ステージ10（ボス戦）から遊ぶ裏ワザ＝交代を押しながらスタート（10/23 かめちゃん）
+    finale: { next: 9, cmd: 'swap', lines: [{ who: 'kame', t: 'お城に入っちゃったね…' }, { who: 'usagi', t: '次はいよいよボス戦や！ ここから遊べるで！' }] },
     sky: ['#c9a3e8', '#ffe9d6'], hill: '#b394c9',
     // 第3章のまとめ：①小さい分かれ道（7）②てんびん（8）③中間→最後の試練（崩れる橋＋矢／トゲ＋落石／敵のいる足場）
     // ④やっと着いた旗はニセゴール ⑤矢の崖をロケット→お城の門に入ってクリア（castle）。お城が見えると「なにかの気配」
@@ -1310,9 +1312,12 @@ function step() {
     if (go) {
       // ジャンプを押しながらスタート＝ステージ7から（ステージ6クリアのごほうび）。まだ無いときは何も起きない
       const cmd = keys.ArrowUp || keys.KeyW || keys.KeyZ || keys.Space;
+      // 交代（Shift／X／C・スマホは交代ボタン）を押しながらスタート＝ステージ10から（ステージ9クリアのごほうび）。まだ無いときは何も起きない
+      const cmd10 = keys.ShiftLeft || keys.ShiftRight || keys.KeyX || keys.KeyC;
       titleSpace = false;
       const sb = startButtons();
-      if (!cmd) startFrom(sb.length ? sb[startSel].stage : 0);
+      if (cmd10) { if (STAGES[9]) startFrom(9); }
+      else if (!cmd) startFrom(sb.length ? sb[startSel].stage : 0);
       else if (STAGES[6]) startFrom(6);
     }
     // スタート地点のボタンは←→で選ぶ
@@ -1884,6 +1889,7 @@ cv.addEventListener('pointerdown', e => {
   if (mode === 'title') for (const b of stageButtons()) if (b.open && hit(b)) { totalStats = []; loadStage(b.stage); return; }
   if (mode === 'title') for (const b of startButtons()) if (hit(b)) {
     // ジャンプを押しながらタップ＝ステージ7から（ボタンの上でも同じ）
+    if (keys.KeyX || keys.ShiftLeft || keys.ShiftRight) { if (STAGES[9]) startFrom(9); return; } // 交代を押しながらタップ＝ステージ10から
     if (keys.Space || keys.ArrowUp) { if (STAGES[6]) startFrom(6); return; }
     startSel = b.k; startFrom(b.stage); return;
   }
@@ -1963,23 +1969,27 @@ function draw() {
     outlined(st.S.name, W / 2, H / 2 - 18, 32, '#ffe08a');
     txt(`${CHARS[st.S.start].name}からスタート`, W / 2, H / 2 + 28, 18, '#fff', 'center');
   }
-  if (mode === 'clear' && st.S.finale) {
-    // ステージ6クリア：お礼のかけあい＋ステージ7から遊ぶ裏ワザの枠（ボタンの形で見せる・10/20 かめちゃんのラフから）
+  if (mode === 'clear' && st.S.castle && modeTimer < 70) {
+    // お城に入っていく間はパネルを出さない
+  } else if (mode === 'clear' && st.S.finale) {
+    // 章の最後のクリア：かけあい＋次の章から遊ぶ裏ワザの枠（ボタンの形で見せる・10/20 かめちゃんのラフから）
+    // finale.cmd：'jump'＝ジャンプ長押し（ステージ7へ）／'swap'＝交代長押し（ステージ10へ・10/23）。finale.lines でセリフを変えられる
     const ready = !!STAGES[st.S.finale.next];
     const pw = Math.min(720, W - 24);
     ctx.fillStyle = 'rgba(20,24,40,0.88)'; rr(W / 2 - pw / 2, 12, pw, 496, 18); ctx.fill();
     outlined(`ステージ${st.i + 1}クリア！`, W / 2, 50, 34, '#ffe08a');
     txt(`タイム ${fmt(st.time)}${st.newBest ? '　★ベスト更新！' : ''}　コイン ${st.got}/${st.coins.length}　ミス ${st.deaths}`, W / 2, 86, 16, '#fff', 'center', 'bold', pw - 40);
-    drawSpeech({ who: 'kame', t: 'ここまで来てくれてありがとう！' }, W / 2, 130);
-    drawSpeech({ who: 'usagi', t: '次のステージも楽しみにしててな！' }, W / 2, 192);
+    const lines = st.S.finale.lines || [{ who: 'kame', t: 'ここまで来てくれてありがとう！' }, { who: 'usagi', t: '次のステージも楽しみにしててな！' }];
+    lines.forEach((l, i) => drawSpeech(l, W / 2, 130 + i * 62));
     // 裏ワザの枠
     const bw = Math.min(560, pw - 40), bx = W / 2 - bw / 2, by = 232;
     ctx.fillStyle = 'rgba(120,86,50,0.55)'; rr(bx, by, bw, 178, 14); ctx.fill();
     ctx.strokeStyle = 'rgba(255,224,138,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
     txt(`ステージ${st.S.finale.next + 1}から遊ぶ裏ワザ！`, W / 2, by + 30, 22, '#ffe08a', 'center');
     txt(ready ? 'タイトル画面で…' : '次回アップデート後は…', W / 2, by + 62, 16, '#fff', 'center');
-    // キーをボタンの形で：［ジャンプ長押し］＋［スタート］
-    const k1 = TOUCH ? 'ジャンプ長押し' : '↑ 長押し', k2 = TOUCH ? 'タップ' : 'Enter';
+    // キーをボタンの形で：［ジャンプ長押し］＋［スタート］／［交代長押し］＋［スタート］
+    const swap = st.S.finale.cmd === 'swap';
+    const k1 = swap ? (TOUCH ? '交代長押し' : 'Shift 長押し') : (TOUCH ? 'ジャンプ長押し' : '↑ 長押し'), k2 = TOUCH ? 'タップ' : 'Enter';
     ctx.font = `bold 20px ${FONT}`;
     const w1 = ctx.measureText(k1).width + 36, w2 = ctx.measureText(k2).width + 36, gap = 46;
     let kx = W / 2 - (w1 + gap + w2) / 2; const ky = by + 80;
@@ -1992,8 +2002,6 @@ function draw() {
     txt(ready ? 'でステージ' + (st.S.finale.next + 1) + 'からスタート！' : 'タイトル画面で入力してね！', W / 2, by + 154, 15, '#fff', 'center');
     if (!ready) txt(`ステージ${st.S.finale.next + 1}は現在制作中！`, W / 2, 442, 18, '#b8c4e8', 'center');
     txt((TOUCH ? 'タップ' : 'Enter') + (st.i + 1 < STAGES.length ? ' で次のステージへ' : ' でエンディングへ'), W / 2, 484, 15, '#8f9bc0', 'center');
-  } else if (mode === 'clear' && st.S.castle && modeTimer < 70) {
-    // お城に入っていく間はパネルを出さない
   } else if (mode === 'clear') {
     panel(300);
     outlined('ステージクリア！', W / 2, H / 2 - 110, 40, '#ffe08a');
