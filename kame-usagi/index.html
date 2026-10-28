@@ -101,7 +101,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/28-a'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/28-b'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'public';
@@ -1209,7 +1209,7 @@ function updateFox() {
 
 // ニセゴールに初めて触ったとき（9面）：はじかれて着地→🐰「なんやこれ！」→旗の後ろからキツネのしっぽがチラッ→「くすくす…」で逃げる
 // 10面の小キツネ「ニセゴール、ひっかかった？」の伏線。この間は動けない（Enterで飛ばせる）
-const FAKE_SCENE = { tail: 22, run: 80, end: 110 };
+const FAKE_SCENE = { tail: 22, run: 100, end: 130 };
 const fakeLock = () => st.fakeScene && st.fakeScene.state === 'show';
 function updateFakeScene() {
   const sc = st.fakeScene;
@@ -1821,10 +1821,10 @@ function drawWorld() {
     const sc = st.fakeScene, k = sc.t - FAKE_SCENE.tail, run = Math.max(0, sc.t - FAKE_SCENE.run);
     const peek = Math.min(1, k / 10); // にゅっと出る
     const bx = sc.f.x - cam + 16 + sc.side * (14 + run * run * 0.6), by = sc.f.y + 120;
-    ctx.save(); ctx.globalAlpha = Math.max(0, 1 - run / 18); ctx.translate(bx, by + (1 - peek) * 30); // 逃げながら消える（壁を突き抜けて見えないように） ctx.rotate(sc.side * (0.25 + Math.sin(st.time * 0.35) * 0.25)); ctx.scale(1.6, 1.6);
+    ctx.save(); ctx.globalAlpha = Math.max(0, 1 - run / 18); ctx.translate(bx, by + (1 - peek) * 30); ctx.rotate(sc.side * (0.25 + Math.sin(st.time * 0.35) * 0.25)); ctx.scale(1.8, 1.8); // 逃げながら消える（壁を突き抜けて見えないように）
     drawFoxTail();
     ctx.restore();
-    if (run === 0) outlined('くすくす…', bx + sc.side * 42, by - 56, 18, '#ffd9a8');
+    if (run === 0) outlined('くすくす…', bx + sc.side * 78, by - 30 + Math.sin(st.time * 0.3) * 4, 26 * Math.min(1, 0.5 + k / 12), '#ffb347', '#5a2a10');
     else if (run < 6) burst(bx, by - 4, '#e8e2d0', 3, 2);
   }
   // ニセモノのゴール（正体を出すまでは本物そっくり）
@@ -1947,6 +1947,19 @@ function drawWorld() {
   ctx.globalAlpha = 1;
   for (const q of st.popups) { ctx.globalAlpha = Math.min(1, q.life / 20); outlined(q.t, q.x - cam, q.y, q.size || 20, q.color, q.stroke); }
   ctx.globalAlpha = 1;
+  // ニセゴールの「なんやこれ！」：キャラの頭のすぐ上に白い吹き出し（ポンと出る・10/28）
+  if (fakeLock()) {
+    const t = st.fakeScene.t, pop = t < 8 ? 0.6 + t / 8 * 0.55 : t < 14 ? 1.15 - (t - 8) / 6 * 0.15 : 1;
+    ctx.save(); ctx.translate(p.x - cam + 15, p.y - 44); ctx.scale(pop, pop);
+    ctx.font = `bold 28px ${FONT}`;
+    const bw = ctx.measureText('なんやこれ！').width + 28;
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#e46b9a'; ctx.lineWidth = 3;
+    rr(-bw / 2, -26, bw, 46, 14); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, 19); ctx.lineTo(0, 32); ctx.lineTo(8, 19); ctx.fill(); ctx.stroke();
+    ctx.fillRect(-9, 16, 18, 4); // しっぽの付け根の線を消す
+    outlined('なんやこれ！', 0, -3, 28, '#e0457f', '#fff');
+    ctx.restore();
+  }
   ctx.restore();
   if (st.combo >= 2 && st.comboT > 0) {
     const n = st.combo, pop = st.comboShow > 0 ? 1 + (st.comboShow / 50) * 0.5 : 1;
@@ -1968,7 +1981,7 @@ function drawWorld() {
     ctx.fillStyle = 'rgba(20,24,40,0.55)'; rr(W / 2 - 80, 146, 160, 8, 4); ctx.fill();
     ctx.fillStyle = '#ffe14d'; rr(W / 2 - 80, 146, 160 * st.comboT / COMBO.chainTime, 8, 4); ctx.fill();
   }
-  const fl = foxLine() || (fakeLock() ? { who: 'usagi', t: 'なんやこれ！' } : null);
+  const fl = foxLine();
   if (fl) drawSpeech({ ...fl, solid: true }, W / 2, 122);
   if (st.endLine && st.endLine.life > 0 && !(st.combo >= 2 && st.comboT > 0)) {
     ctx.save(); ctx.globalAlpha = Math.min(1, st.endLine.life / 20);
