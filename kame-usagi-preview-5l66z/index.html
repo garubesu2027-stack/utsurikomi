@@ -95,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/23-h'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/28-a'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章を公開済み。10/22〜 第3章（ステージ7〜）が @test-only＝お試し版からも外す）
 const EDITION = 'preview';
@@ -1010,7 +1010,8 @@ function updatePlayer() {
     const dir = p.x + p.w / 2 < f.x + f.w / 2 ? -1 : 1;
     p.vx = dir * 6; p.vy = -6; p.roll = 0; p.x = dir < 0 ? f.x - p.w - 1 : f.x + f.w + 1;
     st.flash = 6; burst(f.x + 16, p.y + 16, '#b05cff', 16, 3.5);
-    popup(f.open ? '偽物だってば😝 ウサギで跳び越えて！' : '偽物だよー😝', '#d9a3ff');
+    if (f.open) popup('偽物だってば😝 ウサギで跳び越えて！', '#d9a3ff');
+    else st.fakeScene = { f, side: -dir, state: 'bounce', t: 0 }; // 1回目は「なんやこれ！」＋キツネのしっぽ
     f.open = true;
   }
   if (st.goal && overlap(p, st.goal)) stageClear();
@@ -1112,6 +1113,7 @@ function updateWorld() {
 
   updateFirebars();
   updateFox();
+  updateFakeScene();
 
   // 大岩
   for (const b of st.boulders) updateBoulder(b);
@@ -1197,6 +1199,23 @@ function updateFox() {
   if (f.t >= 290 && f.x < (st.w + 4) * T) { f.x += 7; f.face = 1; } // 逃げる
   else f.face = -1;
   if (f.t >= FOX_END) f.state = 'done';
+}
+
+// ニセゴールに初めて触ったとき（9面）：はじかれて着地→🐰「なんやこれ！」→旗の後ろからキツネのしっぽがチラッ→「くすくす…」で逃げる
+// 10面の小キツネ「ニセゴール、ひっかかった？」の伏線。この間は動けない（Enterで飛ばせる）
+const FAKE_SCENE = { tail: 22, run: 80, end: 110 };
+const fakeLock = () => st.fakeScene && st.fakeScene.state === 'show';
+function updateFakeScene() {
+  const sc = st.fakeScene;
+  if (!sc) return;
+  if (p.dead || mode !== 'play') { st.fakeScene = null; return; }
+  if (sc.state === 'bounce') {
+    if (p.onGround) { sc.state = 'show'; sc.t = 0; p.vx = 0; p.shield = false; p.roll = 0; p.face = sc.side; }
+    return;
+  }
+  sc.t++;
+  if (sc.t === FAKE_SCENE.tail) Music.sfx('jump');
+  if ((sc.t > 30 && pOK()) || sc.t >= FAKE_SCENE.end) st.fakeScene = null; // ジャンプ連打ですぐ飛ばないように少し待つ
 }
 
 function updateBoulder(b) {
@@ -1312,7 +1331,7 @@ function step() {
     st.time++;
     if (p.dead) {
       if (--p.dead <= 0) { resetDynamic(); p = makePlayer(st.spawn); p.inv = 60; }
-    } else if (foxLock()) { p.vx = 0; p.charge = 0; } else updatePlayer();
+    } else if (foxLock() || fakeLock()) { p.vx = 0; p.charge = 0; } else updatePlayer();
     updateWorld();
   } else if (mode === 'clear') {
     modeTimer++;
@@ -1417,8 +1436,7 @@ function drawFox(x, y, face, anim, scale = 1) {
   ctx.fillStyle = dk; ctx.beginPath(); ctx.ellipse(-6 + l, -2, 4, 3, 0, 0, 7); ctx.ellipse(6 - l, -2, 4, 3, 0, 0, 7); ctx.fill();
   // しっぽ（ふさふさ・先が白い）
   ctx.save(); ctx.translate(-face * 13, -14); ctx.rotate(-face * (0.7 + Math.sin(anim * 0.7) * 0.15));
-  ctx.fillStyle = or; ctx.beginPath(); ctx.ellipse(0, -8, 7, 13, 0, 0, 7); ctx.fill();
-  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(0, -18, 4.5, 5, 0, 0, 7); ctx.fill();
+  drawFoxTail();
   ctx.restore();
   ctx.fillStyle = or; ctx.beginPath(); ctx.ellipse(0, -11, 11, 10, 0, 0, 7); ctx.fill();
   ctx.fillStyle = '#fff3e0'; ctx.beginPath(); ctx.ellipse(face * 3, -9, 6, 6.5, 0, 0, 7); ctx.fill();
@@ -1437,6 +1455,12 @@ function drawFox(x, y, face, anim, scale = 1) {
   ctx.beginPath(); ctx.arc(hx + face * 4, hy - 3, 1.8, 0, 7); ctx.fill();
   ctx.strokeStyle = '#1d1d1d'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(hx - face * 4, hy - 3); ctx.lineTo(hx - face * 1, hy - 4); ctx.stroke();
   ctx.restore();
+}
+
+// キツネのしっぽだけ（いまの原点が付け根・上に伸びる）
+function drawFoxTail() {
+  ctx.fillStyle = '#f08a2c'; ctx.beginPath(); ctx.ellipse(0, -8, 7, 13, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(0, -18, 4.5, 5, 0, 0, 7); ctx.fill();
 }
 
 // ボス部屋の扉（cx＝扉のまん中、gy＝床の高さ、shut＝閉まり具合 0〜1）
@@ -1786,6 +1810,17 @@ function drawWorld() {
     ctx.fillStyle = '#e8473c'; ctx.beginPath(); ctx.moveTo(gx + 19, gy + 6); ctx.lineTo(gx + 62, gy + 18 + wave); ctx.lineTo(gx + 19, gy + 32); ctx.fill();
     outlined('GOAL', gx + 17, gy - 16, 16, '#fff');
   }
+  // ニセゴールの後ろからのぞくキツネのしっぽ（旗より先に描く＝旗の後ろに隠れる）
+  if (fakeLock() && st.fakeScene.t >= FAKE_SCENE.tail) {
+    const sc = st.fakeScene, k = sc.t - FAKE_SCENE.tail, run = Math.max(0, sc.t - FAKE_SCENE.run);
+    const peek = Math.min(1, k / 10); // にゅっと出る
+    const bx = sc.f.x - cam + 16 + sc.side * (14 + run * run * 0.6), by = sc.f.y + 120;
+    ctx.save(); ctx.globalAlpha = Math.max(0, 1 - run / 18); ctx.translate(bx, by + (1 - peek) * 30); // 逃げながら消える（壁を突き抜けて見えないように） ctx.rotate(sc.side * (0.25 + Math.sin(st.time * 0.35) * 0.25)); ctx.scale(1.6, 1.6);
+    drawFoxTail();
+    ctx.restore();
+    if (run === 0) outlined('くすくす…', bx + sc.side * 42, by - 56, 18, '#ffd9a8');
+    else if (run < 6) burst(bx, by - 4, '#e8e2d0', 3, 2);
+  }
   // ニセモノのゴール（正体を出すまでは本物そっくり）
   for (const f of st.fakes) {
     const gx = f.x - cam, gy = f.y;
@@ -1927,7 +1962,7 @@ function drawWorld() {
     ctx.fillStyle = 'rgba(20,24,40,0.55)'; rr(W / 2 - 80, 146, 160, 8, 4); ctx.fill();
     ctx.fillStyle = '#ffe14d'; rr(W / 2 - 80, 146, 160 * st.comboT / COMBO.chainTime, 8, 4); ctx.fill();
   }
-  const fl = foxLine();
+  const fl = foxLine() || (fakeLock() ? { who: 'usagi', t: 'なんやこれ！' } : null);
   if (fl) drawSpeech({ ...fl, solid: true }, W / 2, 122);
   if (st.endLine && st.endLine.life > 0 && !(st.combo >= 2 && st.comboT > 0)) {
     ctx.save(); ctx.globalAlpha = Math.min(1, st.endLine.life / 20);
