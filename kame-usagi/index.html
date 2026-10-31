@@ -101,7 +101,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/31-c'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/31-d'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章・10/28に第3章を公開済み。第4章（ステージ10〜）が @test-only＝お試し版からも外す）
 const EDITION = 'public';
@@ -604,6 +604,19 @@ const Music = (() => {
     block: [0.2, t => { tone(1760, t, 0.08, 'triangle', 0.14); noise(t, 0.05, 0.1, 4000); }],     // カキン（ガード）
     stomp: [0.2, t => { sweep(400, 90, t, 0.12, 'square', 0.09); kick(t); }],                     // ふみっ
     miss: [0.7, t => { sweep(600, 120, t, 0.5, 'square', 0.08); noise(t, 0.2, 0.12, 800); }],     // やられた
+    // ボス戦（12面）
+    foxCharge: [0.6, t => { sweep(300, 1200, t, 0.5, 'triangle', 0.07); for (let i = 0; i < 5; i++) tone(1400 + i * 180, t + 0.1 + i * 0.08, 0.06, 'sine', 0.04); }], // キュイーン（投げる合図）
+    foxFire: [0.3, t => { noise(t, 0.2, 0.16, 1800); sweep(900, 260, t, 0.2, 'triangle', 0.08); }], // ヒュオッ（きつね火）
+    foxBig: [0.5, t => { noise(t, 0.4, 0.22, 600); sweep(500, 110, t, 0.4, 'sawtooth', 0.08); }],   // ゴォッ（デカきつね火）
+    bossHit: [0.45, t => { kick(t); noise(t, 0.2, 0.3, 500); sweep(700, 150, t, 0.25, 'square', 0.1); tone(1568, t + 0.06, 0.12, 'square', 0.05); }], // ドカッ
+    superRocket: [0.8, t => { // ヒューン↑＋キラキラ
+      sweep(160, 1800, t, 0.5, 'sawtooth', 0.12); sweep(320, 2600, t + 0.03, 0.47, 'square', 0.06); kick(t); noise(t, 0.35, 0.25, 400);
+      [1568, 2093, 2637, 3136].forEach((f, i) => tone(f, t + 0.12 + i * 0.06, 0.16, 'square', 0.05));
+    }],
+    finish: [1.4, t => { // ドーン！（とどめ）
+      kick(t); kick(t + 0.09); noise(t, 0.9, 0.42, 120); sweep(380, 40, t, 0.9, 'sawtooth', 0.14);
+      [523, 659, 784, 1047].forEach((f, i) => tone(f, t + 0.35 + i * 0.07, 0.5, 'square', 0.05));
+    }],
   };
   for (const name of Object.keys(JINGLES)) {
     const len = JINGLES[name].reduce((a, j) => a + j[1], 0) + 0.4;
@@ -747,6 +760,7 @@ const Music = (() => {
       } else if (!held && want && cur === want && bgmEl().paused && !document.hidden) playEl(bgmEl());
     },
     play(b) { if (want === b && cur === b) return; want = b; start(); },
+    prep(b) { bgmUrl(b).catch(() => {}); }, // 途中で切り替える曲を先に作っておく（切り替えた時に間があかないように）
     stop() { want = null; start(); },
     sfx(name, rate = 1) {
       if (!ac || muted || !sfxBuf[name]) return;
@@ -867,7 +881,7 @@ function loadStage(i) {
   // 小キツネの登場（fox）：やられても最初からやり直さない（1回見たら終わり）
   st.fox = S.fox ? { ...S.fox, state: 'wait', t: 0, x: S.fox.x * T, y: -80, pan: 0 } : null;
   // ボス（boss）：やられてもHPはそのまま（最初からやり直さない）
-  if (S.boss) { const q = perchPos(S.boss.start); st.boss = { state: 'intro', t: 0, hp: BOSS.hp, perch: S.boss.start, x: q.x, y: q.y, face: -1, cd: 0, fires: [] }; }
+  if (S.boss) { const q = perchPos(S.boss.start); Music.prep(BOSS.pinch); st.boss = { state: 'intro', t: 0, hp: BOSS.hp, perch: S.boss.start, x: q.x, y: q.y, face: -1, cd: 0, fires: [], backs: [] }; }
   else st.boss = null;
   resetDynamic();
   p = makePlayer(st.spawn);
@@ -1026,7 +1040,7 @@ function updatePlayer() {
       // 🐢→🐰 ロケットジャンプ：ガードで受けた衝撃を使って大ジャンプ
       const sup = p.superCharge && p.charge > 0; p.superCharge = false;
       p.vy = -COMBO.rocketJump * (sup ? BOSS.superJump : 1); p.rocket = true; p.charge = 0; p.roll = 0;
-      popup(sup ? 'スーパーロケット！' : 'ロケットジャンプ！', sup ? '#ff7ad0' : '#ffb347'); Music.sfx('rocket'); { const v = comboCall('u', chainCombo('rocket')); if (v) Music.voice(v); }
+      popup(sup ? 'スーパーロケット！' : 'ロケットジャンプ！', sup ? '#ff7ad0' : '#ffb347'); Music.sfx(sup ? 'superRocket' : 'rocket'); { const v = comboCall('u', chainCombo('rocket')); if (v) Music.voice(v); }
       burst(p.x + 15, p.y + 30, '#ffb347', 24, 4);
     } else {
       p.roll = 0; Music.sfx('swap');
@@ -1048,6 +1062,7 @@ function updatePlayer() {
     if (p.onGround && st.time % 3 === 0) burst(p.x + 15 - p.face * 14, p.y + 30, '#e8e2d0', 1, 1);
   } else {
     p.shield = !!(N.canShield && kDown() && p.onGround);
+    p.shieldT = p.shield ? (p.shieldT || 0) + 1 : 0; // ジャストガード（ボス戦）の判定用
     const max = p.shield ? N.shieldSpeed : N.speed;
     let dir = (kRight() ? 1 : 0) - (kLeft() ? 1 : 0);
     if (dir) { p.vx += dir * N.accel; p.face = dir; }
@@ -1326,7 +1341,10 @@ const BOSS = {
   fireSpeed: [0, 3.4, 3.8, 3.4], fireR: 9, bigR: 17,
   spread: 0.32,                          // 3連きつね火の開き（ラジアン）
   wind: 34,                              // 投げる前の「ため」（しっぽが光る合図）のコマ数
-  superJump: 1.12,                       // デカきつね火をガードしたときのロケットの強さ（倍）
+  superJump: 1.12,                       // デカきつね火／ジャストガードのあとのロケットの強さ（倍）
+  just: 10,                              // ジャストガード：ガードを押してから何コマ以内に受けたら「ジャスト」か
+  justLine: '今のタイミング完璧や！ もっと高く飛べるで！', // 初めてジャストが出た時だけウサギが教える
+  backSpeed: 8,                          // はね返ったきつね火の速さ（見た目だけ・当たってもダメージなし）
   slow: 72, zoom: 110,                   // とどめの一撃：スローの長さ（3コマに1回だけ進める）／画面が寄る長さ
   intro: [
     { at: 20, who: 'fox', t: 'よく来たね！ でもボクには勝てないよ〜😝' },
@@ -1341,7 +1359,9 @@ const BOSS = {
     { at: 260, who: 'usagi', t: '逃げ足だけは速いな…' },
   ],
   run: 200, downEnd: 370,
+  pinch: { song: 'shiro', bpm: 196, tr: 4 }, // HP1（本気モード）の曲：速く・少し高く
 };
+const stageBgm = () => st.boss && st.boss.hp <= 1 ? BOSS.pinch : st.S.bgm;
 const perchPos = i => { const [tx, up] = st.S.boss.perches[i]; return { x: tx * T + 5, y: (st.h - 2 - up) * T - 32 }; };
 const bossLock = () => st.boss && (st.boss.state === 'intro' || st.boss.state === 'down');
 function bossLine() {
@@ -1356,7 +1376,7 @@ function bossThrow(b) {
   const shot = (da, big) => b.fires.push({ x: h.x, y: h.y, vx: Math.cos(a + da) * v, vy: Math.sin(a + da) * v, life: 400, big, r: big ? BOSS.bigR : BOSS.fireR });
   if (b.hp === 2) for (const da of [-BOSS.spread, 0, BOSS.spread]) shot(da, false);
   else shot(0, b.hp === 1);
-  b.cd = BOSS.fireEvery[b.hp]; b.throwT = 12; Music.sfx('jump');
+  b.cd = BOSS.fireEvery[b.hp]; b.throwT = 12; Music.sfx(b.hp === 1 ? 'foxBig' : 'foxFire');
 }
 const bossBox = b => ({ x: b.x - 4, y: b.y - 8, w: 38, h: 40 });
 function bossHop(b) {
@@ -1379,10 +1399,27 @@ function updateBoss() {
     const cx = Math.max(p.x + 3, Math.min(o.x, p.x + p.w - 3)), cy = Math.max(p.y + 3, Math.min(o.y, p.y + p.h));
     if (Math.hypot(cx - o.x, cy - o.y) < (o.r || BOSS.fireR)) {
       o.dead = true;
-      if (guarded()) { guardHit(); if (o.big) p.superCharge = true; burst(o.x, o.y, '#ffb347', o.big ? 22 : 10, o.big ? 5 : 3); } else killPlayer();
+      if (guarded()) {
+        guardHit(); if (o.big) p.superCharge = true; burst(o.x, o.y, '#ffb347', o.big ? 22 : 10, o.big ? 5 : 3);
+        // カキーン！とキツネの方へはね返る
+        const tx = b.x + 15 - o.x, ty = b.y + 16 - o.y, d = Math.hypot(tx, ty) || 1;
+        b.backs.push({ x: o.x, y: o.y, vx: tx / d * BOSS.backSpeed, vy: ty / d * BOSS.backSpeed, r: o.r || BOSS.fireR, big: o.big, life: Math.ceil(d / BOSS.backSpeed) + 2 });
+        if (p.shield && p.shieldT <= BOSS.just) {
+          p.superCharge = true; st.flash = 8; Music.sfx('combo');
+          st.popups.push({ x: p.x + 15, y: p.y - 50, t: 'ジャストガード！', color: '#9fe3ff', stroke: '#1d4f8a', size: 26, life: 60 });
+          if (!st.justTold) { st.justTold = true; st.endLine = { who: 'usagi', t: BOSS.justLine, life: 170 }; }
+        }
+      } else killPlayer();
     }
   }
   b.fires = b.fires.filter(o => !o.dead);
+  // はね返ったきつね火：キツネに届いたら「わわっ！」（見た目だけ）
+  for (const o of b.backs) {
+    o.x += o.vx; o.y += o.vy;
+    if (--o.life <= 0) { o.dead = true; burst(o.x, o.y, '#9fe3ff', o.big ? 18 : 10, 3); if (b.state === 'fight') b.flinch = 30; }
+  }
+  b.backs = b.backs.filter(o => !o.dead);
+  if (b.flinch > 0) b.flinch--;
   if (p.dead) { b.fires = []; b.cd = Math.max(b.cd, 90); } // やられたら少し休ませる（HPはそのまま）
 
   if (b.state === 'intro') { if (b.t >= BOSS.introEnd) { b.state = 'fight'; b.t = 0; b.cd = 60; } return; }
@@ -1398,27 +1435,29 @@ function updateBoss() {
     b.x = b.from.x + (to.x - b.from.x) * k;
     b.y = b.from.y + (to.y - b.from.y) * k - Math.sin(k * Math.PI) * 40;
     b.face = to.x < b.from.x ? -1 : 1;
-    if (k >= 1) { b.state = 'fight'; b.t = 0; b.cd = Math.max(b.cd, 40); }
+    if (k >= 1) {
+      b.state = 'fight'; b.t = 0; b.cd = Math.max(b.cd, 40);
+      if (b.hitLine) { st.endLine = { who: 'fox', t: b.hitLine, life: 110 }; b.hitLine = null; b.cd = Math.max(b.cd, 70); } // 言い終わるまで少し待つ
+    }
     return;
   }
   // fight：カメ・ウサギの方を向いて、きつね火を投げる
   b.face = p.x < b.x ? -1 : 1;
   if (b.hurt > 0) b.hurt--;
   if (b.wind > 0) { if (p.dead) b.wind = 0; else if (--b.wind <= 0) bossThrow(b); }
-  else if (--b.cd <= 0 && !p.dead) b.wind = BOSS.wind; // しっぽが光って「えいっ！」→投げる
+  else if (--b.cd <= 0 && !p.dead) { b.wind = BOSS.wind; Music.sfx('foxCharge'); } // しっぽが光って「えいっ！」→投げる
   if (b.throwT > 0) b.throwT--;
   // ロケットジャンプ中にぶつかったら1ダメージ
   if (!p.dead && p.rocket && overlap(p, bossBox(b))) {
-    b.hp--; p.vy = 3; p.rocket = false; st.shake = 18; st.flash = 10; Music.sfx('stomp');
-    burst(b.x + 15, b.y + 16, '#ffe14d', 24, 4); b.fires = [];
+    b.hp--; p.vy = 3; p.rocket = false; st.shake = 18; st.flash = 10; Music.sfx(b.hp > 0 ? 'bossHit' : 'finish');
+    burst(b.x + 15, b.y + 16, '#ffe14d', 24, 4); b.fires = []; b.backs = []; b.flinch = 0;
     if (b.hp <= 0) {
       b.state = 'down'; b.t = 0; b.vy = -6; b.face = -1; st.endLine = null;
       st.slow = BOSS.slow; st.zoom = { t: 0, x: b.x + 15, y: b.y + 16 }; st.flash = 8; st.shake = 26;
       st.popups.push({ x: b.x + 15, y: b.y - 44, t: 'ドーン！', color: '#ffe14d', stroke: '#6b4300', size: 38, life: 90 });
       return;
     }
-    st.endLine = { who: 'fox', t: BOSS.hitLines[b.hp], life: 110 };
-    bossHop(b);
+    bossHop(b); b.hitLine = BOSS.hitLines[b.hp];
     return;
   }
   if (b.t >= BOSS.wander) bossHop(b);
@@ -1536,7 +1575,7 @@ function step() {
     if (sbn && (pressed.ArrowLeft || pressed.KeyA)) startSel = (startSel + sbn - 1) % sbn;
     if (sbn && (pressed.ArrowRight || pressed.KeyD)) startSel = (startSel + 1) % sbn;
   } else if (mode === 'intro') {
-    Music.play(st.S.bgm);
+    Music.play(stageBgm());
     if (--modeTimer <= 0 || pOK()) mode = 'play';
     updateWorld();
   } else if (mode === 'pause') {
@@ -1546,7 +1585,7 @@ function step() {
   } else if (mode === 'play' && pressed.KeyP) {
     pauseGame();
   } else if (mode === 'play') {
-    Music.play(st.S.bgm);
+    Music.play(stageBgm());
     if (pressed.KeyR) { const keep = totalStats; loadStage(st.i); totalStats = keep; mode = 'play'; }
     if (pressed.Escape) { mode = 'title'; }
     // ボスへのとどめ：スロー（3コマに1回だけ進める）と画面の寄り
@@ -1985,6 +2024,7 @@ function drawWorld() {
 
   // ヒント看板
   for (const h of st.S.hints) {
+    if (st.boss && (st.boss.hp < BOSS.hp || st.justTold)) break;
     const x = h.x * T - cam, y = h.y * T;
     if (x > W + 400 || x < -500) continue;
     const m = h.tag ? [null, h.tag, h.t] : h.t.match(/^【(.+?)】(.*)$/);
@@ -2158,7 +2198,9 @@ function drawWorld() {
         ctx.fillStyle = `rgba(110,180,255,${0.25 + 0.35 * k * pul})`; ctx.beginPath(); ctx.arc(b.x + 15 - cam, b.y + 14, 30 + 12 * k, 0, 7); ctx.fill();
         ctx.strokeStyle = `rgba(200,230,255,${0.4 + 0.5 * pul})`; ctx.lineWidth = 3; ctx.stroke();
       }
-      if (!blink) drawFox(b.x - cam, b.y, b.face || -1, b.state === 'down' && b.t >= BOSS.run ? st.time * 0.6 : st.time * 0.2, 1.25);
+      const fx = b.flinch > 0 ? Math.sin(b.flinch * 1.3) * 3 : 0; // はね返りが当たってぶるぶる
+      if (b.flinch > 0) outlined('わわっ！', b.x + 15 - cam, b.y - 58, 16, '#fff', '#c0561a');
+      if (!blink) drawFox(b.x - cam + fx, b.y, b.face || -1, b.state === 'down' && b.t >= BOSS.run ? st.time * 0.6 : st.time * 0.2, 1.25);
       if (b.state !== 'down') for (let i = 0; i < BOSS.hp; i++) {
         const hx = b.x + 15 - cam + (i - 1) * 18, hy = b.y - 34;
         ctx.fillStyle = i < b.hp ? '#ff5a7a' : 'rgba(255,255,255,0.25)';
@@ -2172,6 +2214,10 @@ function drawWorld() {
       ctx.fillStyle = '#e8f6ff'; ctx.beginPath(); ctx.arc(x - cam, y, r * 0.45, 0, 7); ctx.fill();
     };
     for (const o of b.fires) fireBall(o.x, o.y, o.r || BOSS.fireR, o.big);
+    for (const o of b.backs) { // はね返り：白っぽく光って尾を引く
+      for (let i = 3; i > 0; i--) { ctx.globalAlpha = 0.18 * (4 - i); ctx.fillStyle = '#bfe6ff'; ctx.beginPath(); ctx.arc(o.x - o.vx * i * 0.8 - cam, o.y - o.vy * i * 0.8, o.r * 0.8, 0, 7); ctx.fill(); }
+      ctx.globalAlpha = 1; fireBall(o.x, o.y, o.r * 0.8, o.big);
+    }
     if (b.wind > 0 && b.state === 'fight') { // 手元できつね火が育つ（デカきつね火は大きく）＋「えいっ！」
       const k = 1 - b.wind / BOSS.wind, h = bossHand(b), r = (b.hp === 1 ? BOSS.bigR : BOSS.fireR) * (0.3 + 0.7 * k);
       if (b.hp === 2) for (const dx of [-12, 0, 12]) fireBall(h.x + dx * k, h.y - 4, r * 0.8, false);
