@@ -101,7 +101,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/31-b'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/31-c'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章・10/28に第3章を公開済み。第4章（ステージ10〜）が @test-only＝お試し版からも外す）
 const EDITION = 'public';
@@ -1024,8 +1024,9 @@ function updatePlayer() {
       popup('甲羅アタック！', '#9fe3ff'); Music.sfx('roll'); { const v = comboCall('k', chainCombo('roll')); if (v) Music.voice(v); }
     } else if (FEATURES.combo && from === 'kame' && (p.charge > 0 || st.S.practice || inComboZone())) {
       // 🐢→🐰 ロケットジャンプ：ガードで受けた衝撃を使って大ジャンプ
-      p.vy = -COMBO.rocketJump; p.rocket = true; p.charge = 0; p.roll = 0;
-      popup('ロケットジャンプ！', '#ffb347'); Music.sfx('rocket'); { const v = comboCall('u', chainCombo('rocket')); if (v) Music.voice(v); }
+      const sup = p.superCharge && p.charge > 0; p.superCharge = false;
+      p.vy = -COMBO.rocketJump * (sup ? BOSS.superJump : 1); p.rocket = true; p.charge = 0; p.roll = 0;
+      popup(sup ? 'スーパーロケット！' : 'ロケットジャンプ！', sup ? '#ff7ad0' : '#ffb347'); Music.sfx('rocket'); { const v = comboCall('u', chainCombo('rocket')); if (v) Music.voice(v); }
       burst(p.x + 15, p.y + 30, '#ffb347', 24, 4);
     } else {
       p.roll = 0; Music.sfx('swap');
@@ -1320,15 +1321,20 @@ function updateFox() {
 // 登場（intro）と倒したあと（down）はセリフの場面で動けない（Enterで送れる）
 const BOSS = {
   hp: 3, hopTime: 40, wander: 420,       // 飛び移りにかかるコマ／何もしなくても飛び移る間隔
-  fireEvery: [0, 75, 90, 110],           // きつね火の間隔（残りHPごと）
-  fireSpeed: [0, 4.4, 3.8, 3.2], fireR: 9,
+  // 攻め方は残りHPごとに変わる：HP3＝1発ずつ／HP2＝3方向に広がる3連きつね火／HP1＝デカきつね火（ガードするとスーパーロケット）
+  fireEvery: [0, 90, 95, 110],           // きつね火の間隔（残りHPごと）
+  fireSpeed: [0, 3.4, 3.8, 3.4], fireR: 9, bigR: 17,
+  spread: 0.32,                          // 3連きつね火の開き（ラジアン）
+  wind: 34,                              // 投げる前の「ため」（しっぽが光る合図）のコマ数
+  superJump: 1.12,                       // デカきつね火をガードしたときのロケットの強さ（倍）
+  slow: 72, zoom: 110,                   // とどめの一撃：スローの長さ（3コマに1回だけ進める）／画面が寄る長さ
   intro: [
     { at: 20, who: 'fox', t: 'よく来たね！ でもボクには勝てないよ〜😝' },
     { at: 140, who: 'kame', t: 'きつね火は、ぼくがガードで受け止める！' },
     { at: 250, who: 'usagi', t: 'そしたらワイがロケットジャンプでぶつかったる！' },
   ],
   introEnd: 360,
-  hitLines: [null, 'うぅ…まだまだ〜！', 'いたっ！ やったな〜！'],
+  hitLines: [null, 'うぅ…本気出すもん！ デカきつね火だ〜！', 'いたっ！ じゃあ3つ投げちゃうもんね！'],
   down: [
     { at: 30, who: 'fox', t: 'いたたた…' },
     { at: 120, who: 'fox', t: 'お、お父さんに言いつけてやる〜！' },
@@ -1344,12 +1350,20 @@ function bossLine() {
   let l = null; for (const o of b.state === 'intro' ? BOSS.intro : BOSS.down) if (b.t >= o.at) l = o;
   return l;
 }
+const bossHand = b => ({ x: b.x + 15 + b.face * 10, y: b.y + 18 });
+function bossThrow(b) {
+  const h = bossHand(b), a = Math.atan2(p.y + 16 - h.y, p.x + 15 - h.x), v = BOSS.fireSpeed[b.hp];
+  const shot = (da, big) => b.fires.push({ x: h.x, y: h.y, vx: Math.cos(a + da) * v, vy: Math.sin(a + da) * v, life: 400, big, r: big ? BOSS.bigR : BOSS.fireR });
+  if (b.hp === 2) for (const da of [-BOSS.spread, 0, BOSS.spread]) shot(da, false);
+  else shot(0, b.hp === 1);
+  b.cd = BOSS.fireEvery[b.hp]; b.throwT = 12; Music.sfx('jump');
+}
 const bossBox = b => ({ x: b.x - 4, y: b.y - 8, w: 38, h: 40 });
 function bossHop(b) {
   // いちばんカメ・ウサギから遠いシャンデリアへ（真下に回り込む必要がある）
   let best = -1, far = -1;
   st.S.boss.perches.forEach((o, i) => { const d = Math.abs(perchPos(i).x - p.x); if (i !== b.perch && d > far) { far = d; best = i; } });
-  b.from = { x: b.x, y: b.y }; b.perch = best; b.state = 'hop'; b.t = 0;
+  b.from = { x: b.x, y: b.y }; b.perch = best; b.state = 'hop'; b.t = 0; b.wind = 0;
 }
 function updateBoss() {
   const b = st.boss;
@@ -1363,9 +1377,9 @@ function updateBoss() {
     if (--o.life <= 0 || isSolid(Math.floor(o.x / T), Math.floor(o.y / T))) { o.dead = true; burst(o.x, o.y, '#ffb347', 6, 2); continue; }
     if (p.dead) continue;
     const cx = Math.max(p.x + 3, Math.min(o.x, p.x + p.w - 3)), cy = Math.max(p.y + 3, Math.min(o.y, p.y + p.h));
-    if (Math.hypot(cx - o.x, cy - o.y) < BOSS.fireR) {
+    if (Math.hypot(cx - o.x, cy - o.y) < (o.r || BOSS.fireR)) {
       o.dead = true;
-      if (guarded()) { guardHit(); burst(o.x, o.y, '#ffb347', 10, 3); } else killPlayer();
+      if (guarded()) { guardHit(); if (o.big) p.superCharge = true; burst(o.x, o.y, '#ffb347', o.big ? 22 : 10, o.big ? 5 : 3); } else killPlayer();
     }
   }
   b.fires = b.fires.filter(o => !o.dead);
@@ -1390,17 +1404,19 @@ function updateBoss() {
   // fight：カメ・ウサギの方を向いて、きつね火を投げる
   b.face = p.x < b.x ? -1 : 1;
   if (b.hurt > 0) b.hurt--;
-  if (--b.cd <= 0 && !p.dead) {
-    const sx = b.x + 15 + b.face * 10, sy = b.y + 18, dx = p.x + 15 - sx, dy = p.y + 16 - sy, d = Math.hypot(dx, dy) || 1, v = BOSS.fireSpeed[b.hp];
-    b.fires.push({ x: sx, y: sy, vx: dx / d * v, vy: dy / d * v, life: 400 });
-    b.cd = BOSS.fireEvery[b.hp]; b.throwT = 12; Music.sfx('jump');
-  }
+  if (b.wind > 0) { if (p.dead) b.wind = 0; else if (--b.wind <= 0) bossThrow(b); }
+  else if (--b.cd <= 0 && !p.dead) b.wind = BOSS.wind; // しっぽが光って「えいっ！」→投げる
   if (b.throwT > 0) b.throwT--;
   // ロケットジャンプ中にぶつかったら1ダメージ
   if (!p.dead && p.rocket && overlap(p, bossBox(b))) {
     b.hp--; p.vy = 3; p.rocket = false; st.shake = 18; st.flash = 10; Music.sfx('stomp');
     burst(b.x + 15, b.y + 16, '#ffe14d', 24, 4); b.fires = [];
-    if (b.hp <= 0) { b.state = 'down'; b.t = 0; b.vy = -6; b.face = -1; st.endLine = null; return; }
+    if (b.hp <= 0) {
+      b.state = 'down'; b.t = 0; b.vy = -6; b.face = -1; st.endLine = null;
+      st.slow = BOSS.slow; st.zoom = { t: 0, x: b.x + 15, y: b.y + 16 }; st.flash = 8; st.shake = 26;
+      st.popups.push({ x: b.x + 15, y: b.y - 44, t: 'ドーン！', color: '#ffe14d', stroke: '#6b4300', size: 38, life: 90 });
+      return;
+    }
     st.endLine = { who: 'fox', t: BOSS.hitLines[b.hp], life: 110 };
     bossHop(b);
     return;
@@ -1533,6 +1549,9 @@ function step() {
     Music.play(st.S.bgm);
     if (pressed.KeyR) { const keep = totalStats; loadStage(st.i); totalStats = keep; mode = 'play'; }
     if (pressed.Escape) { mode = 'title'; }
+    // ボスへのとどめ：スロー（3コマに1回だけ進める）と画面の寄り
+    if (st.zoom && ++st.zoom.t >= BOSS.zoom) st.zoom = null;
+    if (st.slow > 0 && st.slow-- % 3) { pressed = {}; return; }
     st.time++;
     if (p.dead) {
       if (--p.dead <= 0) { resetDynamic(); p = makePlayer(st.spawn); p.inv = 60; }
@@ -1956,6 +1975,10 @@ function drawWorld() {
   if (st.boss) cam = Math.round(clampCam(Math.max(p.x + 90 - W, Math.min(p.x - 60, (p.x + st.boss.x) / 2 + 15 - W / 2))));
   ctx.save();
   if (st.shake > 0) ctx.translate((Math.random() - 0.5) * st.shake * 0.4, (Math.random() - 0.5) * st.shake * 0.4);
+  if (st.zoom) { // とどめの一撃の場所を中心に寄る（中心を動かさないので画面のはしに隙間は出ない）
+    const k = st.zoom.t / BOSS.zoom, e = Math.min(1, k * 8, (1 - k) * 3), z = 1 + 0.5 * e * e * (3 - 2 * e), fx = st.zoom.x - cam, fy = st.zoom.y;
+    ctx.translate(fx, fy); ctx.scale(z, z); ctx.translate(-fx, -fy);
+  }
   drawBackground(cam);
   // コンボ区間はうっすら金色に
   if (st.S.comboZone) { const [z0, z1] = st.S.comboZone; ctx.fillStyle = 'rgba(255,215,80,0.16)'; ctx.fillRect(z0 * T - cam, 0, (z1 - z0 + 1) * T, 11 * T); }
@@ -2130,6 +2153,11 @@ function drawWorld() {
     });
     if (b.state !== 'done') {
       const blink = b.state === 'hop' && b.t < 20 && b.t % 6 < 3; // 当たった直後はチカチカ
+      if (b.wind > 0 && b.state === 'fight') { // 投げる合図：体のまわりが青く光る
+        const k = 1 - b.wind / BOSS.wind, pul = 0.5 + 0.5 * Math.sin(st.time * 0.8);
+        ctx.fillStyle = `rgba(110,180,255,${0.25 + 0.35 * k * pul})`; ctx.beginPath(); ctx.arc(b.x + 15 - cam, b.y + 14, 30 + 12 * k, 0, 7); ctx.fill();
+        ctx.strokeStyle = `rgba(200,230,255,${0.4 + 0.5 * pul})`; ctx.lineWidth = 3; ctx.stroke();
+      }
       if (!blink) drawFox(b.x - cam, b.y, b.face || -1, b.state === 'down' && b.t >= BOSS.run ? st.time * 0.6 : st.time * 0.2, 1.25);
       if (b.state !== 'down') for (let i = 0; i < BOSS.hp; i++) {
         const hx = b.x + 15 - cam + (i - 1) * 18, hy = b.y - 34;
@@ -2137,11 +2165,18 @@ function drawWorld() {
         ctx.beginPath(); ctx.arc(hx - 3.5, hy, 4.5, Math.PI, 0); ctx.arc(hx + 3.5, hy, 4.5, Math.PI, 0); ctx.lineTo(hx, hy + 9); ctx.closePath(); ctx.fill();
       }
     }
-    for (const o of b.fires) {
-      const fl = 1 + Math.sin(st.time * 0.6 + o.x) * 0.15;
-      ctx.fillStyle = 'rgba(120,180,255,0.35)'; ctx.beginPath(); ctx.arc(o.x - cam, o.y, BOSS.fireR * 1.7 * fl, 0, 7); ctx.fill();
-      ctx.fillStyle = '#6fb6ff'; ctx.beginPath(); ctx.arc(o.x - cam, o.y, BOSS.fireR * fl, 0, 7); ctx.fill();
-      ctx.fillStyle = '#e8f6ff'; ctx.beginPath(); ctx.arc(o.x - cam, o.y, BOSS.fireR * 0.45, 0, 7); ctx.fill();
+    const fireBall = (x, y, r, big) => {
+      const fl = 1 + Math.sin(st.time * 0.6 + x) * 0.15;
+      ctx.fillStyle = big ? 'rgba(170,120,255,0.38)' : 'rgba(120,180,255,0.35)'; ctx.beginPath(); ctx.arc(x - cam, y, r * 1.7 * fl, 0, 7); ctx.fill();
+      ctx.fillStyle = big ? '#8f7bff' : '#6fb6ff'; ctx.beginPath(); ctx.arc(x - cam, y, r * fl, 0, 7); ctx.fill();
+      ctx.fillStyle = '#e8f6ff'; ctx.beginPath(); ctx.arc(x - cam, y, r * 0.45, 0, 7); ctx.fill();
+    };
+    for (const o of b.fires) fireBall(o.x, o.y, o.r || BOSS.fireR, o.big);
+    if (b.wind > 0 && b.state === 'fight') { // 手元できつね火が育つ（デカきつね火は大きく）＋「えいっ！」
+      const k = 1 - b.wind / BOSS.wind, h = bossHand(b), r = (b.hp === 1 ? BOSS.bigR : BOSS.fireR) * (0.3 + 0.7 * k);
+      if (b.hp === 2) for (const dx of [-12, 0, 12]) fireBall(h.x + dx * k, h.y - 4, r * 0.8, false);
+      else fireBall(h.x, h.y - 4, r, b.hp === 1);
+      if (b.wind < 16) outlined('えいっ！', b.x + 15 - cam + b.face * 34, b.y - 12, 18, '#fff', '#3a6bd0');
     }
   }
   if (st.fox && st.fox.state === 'show') drawFox(st.fox.x - cam, st.fox.y, st.fox.face || -1, st.time * 0.3, 1.25);
