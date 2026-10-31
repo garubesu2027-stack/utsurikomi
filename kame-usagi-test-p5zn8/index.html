@@ -95,7 +95,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W = 960; // 縦持ちのスマホだけ640に絞る（layoutView）
 const H = 520, T = 40, GRAV = 0.55, MAXFALL = 13;
-const VERSION = '10/28-c'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
+const VERSION = '10/31-a'; // 直したら更新する（スマホが古い版を開いていないかの確認用）
 // 版の作り分け（build.py）：テスト版＝このまま／お試し版＝'preview'（@dev-only を取り除く＝公開版と同じ見た目で第2章入り）
 // 公開版＝'public'（@test-only と @dev-only を取り除く。10/21に第2章・10/28に第3章を公開済み。第4章（ステージ10〜）が @test-only＝お試し版からも外す）
 const EDITION = 'test';
@@ -948,7 +948,7 @@ function loadStage(i) {
   // 回る火の棒（firebars）：軸のマスは固いブロックになる
   st.firebars = (S.firebars || []).map(f => { base[f.y][f.x] = 'O'; return { ...f, ang: f.ang || 0, cd: 0 }; });
   // 小キツネの登場（fox）：やられても最初からやり直さない（1回見たら終わり）
-  st.fox = S.fox ? { ...S.fox, state: 'wait', t: 0, x: S.fox.x * T, y: -80 } : null;
+  st.fox = S.fox ? { ...S.fox, state: 'wait', t: 0, x: S.fox.x * T, y: -80, pan: 0 } : null;
   resetDynamic();
   p = makePlayer(st.spawn);
   mode = 'intro'; modeTimer = 100;
@@ -1363,6 +1363,7 @@ const FOX_LINES = [
   { at: 380, who: 'kame', t: 'あれ、戦わないの？' },
 ];
 const FOX_END = 480;
+const FOX_TAUNT = 270, FOX_RUN = 340; // 「やーだよ！」の間はその場でぴょんぴょん→FOX_RUN で逃げる（前は290ですぐ逃げて、セリフ中に姿が無かった・10/31）
 const foxLock = () => st.fox && st.fox.state === 'show';
 function foxLine() {
   if (!foxLock()) return null;
@@ -1371,7 +1372,10 @@ function foxLine() {
 }
 function updateFox() {
   const f = st.fox;
-  if (!f || f.state === 'done') return;
+  if (!f) return;
+  // 画面寄せ（drawWorld）：場面の間は 0→1、終わったら 1→0 へゆっくり
+  f.pan = f.state === 'show' ? Math.min(1, (f.pan || 0) + 1 / 30) : Math.max(0, (f.pan || 0) - 1 / 40);
+  if (f.state === 'done') return;
   if (f.state === 'wait') {
     if (mode !== 'play' || p.dead || !p.onGround || (p.x + 15) / T < f.trigger) return;
     f.state = 'show'; f.t = 0; p.vx = 0; p.shield = false; p.roll = 0; p.face = 1;
@@ -1381,8 +1385,10 @@ function updateFox() {
   if (pOK()) { const nx = FOX_LINES.find(o => o.at > f.t); f.t = nx ? nx.at : FOX_END; } // セリフ送り
   const gy = f.row * T - 32;
   if (f.t < 40) f.y = -80 + (gy + 80) * (f.t / 40) ** 2; // 上から降ってくる
-  else if (f.t === 40 || (f.t > 40 && f.y < gy)) { f.y = gy; st.shake = 20; Music.sfx('stomp'); burst(f.x + 15, gy + 30, '#e8e2d0', 14, 3); }
-  if (f.t >= 290 && f.x < (st.w + 4) * T) { f.x += 7; f.face = 1; } // 逃げる
+  else if (!f.landed) { f.landed = true; f.y = gy; st.shake = 20; Music.sfx('stomp'); burst(f.x + 15, gy + 30, '#e8e2d0', 14, 3); }
+  else if (f.t >= FOX_TAUNT && f.t < FOX_RUN) f.y = gy - Math.abs(Math.sin((f.t - FOX_TAUNT) * 0.2)) * 16; // あっかんべーでぴょんぴょん
+  else f.y = gy;
+  if (f.t >= FOX_RUN && f.x < (st.w + 4) * T) { f.x += 7; f.face = 1; } // 逃げる
   else f.face = -1;
   if (f.t >= FOX_END) f.state = 'done';
 }
@@ -1926,6 +1932,12 @@ function drawWorld() {
     st.cam = clampCam(st.cam);
     cam = Math.round(st.cam);
   } else cam = clampCam(p.x - W * 0.4);
+  // 小キツネの場面：カメとキツネ（降りた場所）の真ん中が画面の中央に来るように寄せる
+  // （縦持ちだとキツネが画面の右端で切れて、「やーだよ！」の時は映っていなかった・10/31）
+  if (st.fox && st.fox.pan > 0) {
+    const e = st.fox.pan * st.fox.pan * (3 - 2 * st.fox.pan), mid = (p.x + st.S.fox.x * T) / 2 + 15;
+    cam = Math.round(cam + (clampCam(mid - W / 2) - cam) * e);
+  }
   ctx.save();
   if (st.shake > 0) ctx.translate((Math.random() - 0.5) * st.shake * 0.4, (Math.random() - 0.5) * st.shake * 0.4);
   drawBackground(cam);
