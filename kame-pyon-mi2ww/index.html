@@ -15,7 +15,7 @@
 <body>
 <canvas id="cv"></canvas>
 <script>
-const VERSION = '11/08-d';   // 直したら上げる（スマホは10分キャッシュがあるので版番号で確かめる）
+const VERSION = '11/08-e';   // 直したら上げる（スマホは10分キャッシュがあるので版番号で確かめる）
 
 // ===== 調整用の数字（試作なのでここだけ触れば手触りが変わる） =====
 const TUNE = {
@@ -26,12 +26,14 @@ const TUNE = {
   early:   [125, 75],   // 早押し側の成功幅（元 [100, 60] とやさしく版 [150, 90] の中間）
   late:    [150, 92],   // 遅押し側の成功幅（人は遅れがちなので少し甘く・元 [120, 75] とやさしく版 [180, 110] の中間）
   // ただし短い音が続くところは、隣の着地とかぶらないよう間隔の半分までに縮める
-  // 難易度ごとの テンポ と 譜面（11/08〜）。判定の幅は3つとも同じ（上の perfect/early/late）
+  // 難易度ごとの設定（11/08〜）。perfect/early/late を書いた難易度だけ上の判定の代わりにそれを使う
   //   merge: true ＝ 前の音にくっついた短い音（16分音符）のカメをなくして前のカメにまとめる（とばした文字は空中で歌う）
+  //   bob ＝ カメが上下にぷかぷか揺れる幅（px）。見た目だけで、押すタイミングは曲どおり
   diff: {
     easy:   { name: 'イージー', bpm: [104, 108, 112, 116], merge: true },
-    normal: { name: 'ノーマル', bpm: [104, 116, 128, 140], merge: false },
-    hard:   { name: 'ハード',   bpm: [104, 120, 136, 152], merge: false, bob: 10 },   // bob＝カメが上下にぷかぷか揺れる幅（px）
+    normal: { name: 'ノーマル', bpm: [104, 116, 128, 140] },
+    hard:   { name: 'ハード',   bpm: [116, 128, 140, 152], perfect: [45, 30], early: [100, 60], late: [120, 75] },   // 判定は10/29の元の厳しさ
+    extra:  { name: 'エクストラ', bpm: [116, 128, 140, 152], perfect: [45, 30], early: [100, 60], late: [120, 75], bob: 10 },   // ハード＋ぷかぷか。ハードをクリアすると出る
   },
   harmonyAt: 10,        // PERFECTがこの回数続くと、カメ（ずんだもん）がハモる
   click: true,          // 拍ごとのカチッ（テンポの目安）
@@ -55,9 +57,13 @@ addEventListener('resize', fit); fit();
 
 // ===== 自己ベスト（保存できない環境でも動くように） =====
 // 難易度ごとに別々。ノーマルは前からの記録（kamepyon-best）をそのまま使う
-const DIFFS = ['easy', 'normal', 'hard'];
+const DIFFS = ['easy', 'normal', 'hard', 'extra'];
 let diff = 'normal';
-try { if (DIFFS.includes(localStorage.getItem('kamepyon-diff'))) diff = localStorage.getItem('kamepyon-diff'); } catch (e) {}
+// エクストラはハードを4番までクリアすると解放（端末に覚えておく）
+function extraOpen() { try { return localStorage.getItem('kamepyon-extra') === '1'; } catch (e) { return false; } }
+function openExtra() { try { localStorage.setItem('kamepyon-extra', '1'); } catch (e) {} }
+function canPick(d) { return d !== 'extra' || extraOpen(); }
+try { const d = localStorage.getItem('kamepyon-diff'); if (DIFFS.includes(d) && canPick(d)) diff = d; } catch (e) {}
 function D() { return TUNE.diff[diff]; }
 function bestKey() { return diff === 'normal' ? 'kamepyon-best' : 'kamepyon-best-' + diff; }
 function loadBest() { try { return +localStorage.getItem(bestKey()) || 0; } catch (e) { return 0; } }
@@ -176,7 +182,7 @@ function timeAtPos(q) {
 }
 function verseOfTarget(k) { return verseNo(Math.max(0, k - 1)); }
 function win(name, k) {
-  const v = lerp(TUNE[name][0], TUNE[name][1], Math.min(1, verseOfTarget(k) / 3));
+  const w = D()[name] || TUNE[name], v = lerp(w[0], w[1], Math.min(1, verseOfTarget(k) / 3));
   if (name === 'early') return Math.min(v, (st.L[k] - st.L[k - 1]) / 2);
   if (name === 'late') { extendChart(k); return Math.min(v, (st.L[k + 1] - st.L[k]) / 2); }
   return v;
@@ -200,8 +206,8 @@ function reset(toTitle) {
 function popup(text, color, ms) { st.popup = { text, color, ms, at: now() }; }
 
 // タイトルの難易度ボタン（x中心, 幅, 高さ, y中心）と、ゲームオーバー画面の「難易度をえらぶ」
-const BTN_Y = 215, BTN_W = 170, BTN_H = 58;
-function btnX(i) { return W / 2 + (i - 1) * 200; }
+const BTN_Y = 215, BTN_W = 165, BTN_H = 58;
+function btnX(i) { return W / 2 + (i - 1.5) * 185; }
 const BACK = { x: 110, y: 425, w: 190, h: 40 };
 function hit(p, x, y, w, h) { return p && Math.abs(p.x - x) <= w / 2 && Math.abs(p.y - y) <= h / 2; }
 
@@ -210,12 +216,14 @@ function press(p) {
   const t = now();
   if (st.state === 'title') {
     if (p) {
-      const i = DIFFS.findIndex((d, i) => hit(p, btnX(i), BTN_Y, BTN_W + 20, BTN_H + 30));
+      const i = DIFFS.findIndex((d, i) => hit(p, btnX(i), BTN_Y, BTN_W + 16, BTN_H + 30));
       if (i < 0) return;            // ボタン以外のタップは無視（押しまちがい防止）
+      if (!canPick(DIFFS[i])) return;   // 空きマスは押しても何も起きない
       setDiff(DIFFS[i]);
     }
     reset(false); return;
   }
+  if (st.state === 'clear') { if (t - st.clearAt > 2000) reset(true); return; }
   if (st.state === 'over') {
     if (t - st.overAt <= 450) return;
     if (hit(p, BACK.x, BACK.y, BACK.w, BACK.h)) { reset(true); return; }
@@ -249,7 +257,15 @@ function press(p) {
   if (n.last) {
     const vn = verseNo(k - 1);
     st.banner = { text: vn === NV - 1 ? '4番まで歌い切った！🎉' : `${vn + 1}番クリア！`, at: t };
+    if (vn === NV - 1) clearGame(t, k);
   }
+}
+
+// 4番を歌い切ったらクリア。ウサギは最後のカメの上で止まる
+function clearGame(t, k) {
+  st.state = 'clear'; st.clearAt = t; st.endT = st.L[k];
+  if (st.score > st.best) { st.best = st.score; st.newRecord = true; saveBest(st.score); }
+  if ((diff === 'hard' || diff === 'extra') && !extraOpen()) { openExtra(); st.extraNew = true; }
 }
 
 function fail(text, d) {
@@ -282,6 +298,7 @@ function update() {
 // ===== 位置の計算 =====
 // 時刻tにウサギがどの区間を跳んでいるか（k＝向かっているカメ、p＝進み具合）
 function seg(t) {
+  if (st.state === 'clear') t = Math.min(t, st.endT);   // クリア後は最後のカメで止まる
   if (!st.L.length || t < st.L[0]) return { k: 0, p: 1 };
   let k = 1;
   extendChart(k);
@@ -472,15 +489,19 @@ function draw() {
     drawRabbit(RABBIT_X, SHELL_TOP, {});
     text('カメぴょん！', W / 2, 100, 64, '#fff', '#2a5d86');
     text('（試作版）', W / 2, 150, 22, '#2a5d86');
-    const colors = { easy: '#5cb85c', normal: '#3a86c8', hard: '#d9534f' };
+    const colors = { easy: '#5cb85c', normal: '#3a86c8', hard: '#d9534f', extra: '#8e44ad' };
     DIFFS.forEach((d, i) => {
-      const x = btnX(i), sel = d === diff;
-      cx.fillStyle = colors[d]; cx.globalAlpha = sel ? 1 : 0.8;
+      const x = btnX(i), sel = d === diff, locked = !canPick(d);
       cx.beginPath();
       if (cx.roundRect) cx.roundRect(x - BTN_W / 2, BTN_Y - BTN_H / 2, BTN_W, BTN_H, 14); else cx.rect(x - BTN_W / 2, BTN_Y - BTN_H / 2, BTN_W, BTN_H);
-      cx.fill(); cx.globalAlpha = 1;
+      if (locked) {
+        // まだ遊べないマス：わざと何も描かない（場所だけ空けて匂わせる）
+        return;
+      }
+      cx.fillStyle = colors[d]; cx.globalAlpha = sel ? 1 : 0.8; cx.fill(); cx.globalAlpha = 1;
+      if (d === 'extra') { cx.lineWidth = 3; cx.strokeStyle = `rgba(255,215,90,${0.6 + 0.4 * Math.sin(t / 300)})`; cx.stroke(); }
       if (sel) { cx.lineWidth = 4; cx.strokeStyle = '#fff'; cx.stroke(); }
-      text(TUNE.diff[d].name, x, BTN_Y, 26, '#fff');
+      text(d === 'extra' ? '✨エクストラ' : TUNE.diff[d].name, x, BTN_Y, d === 'extra' ? 22 : 26, '#fff');
     });
     text('タップした難易度ですぐスタート！（キーボードは ←→ ＋ スペース）', W / 2, 262, 18, '#2a5d86');
     text('歌に合わせてカメに着地！ 4番まで歌い切れるかな？', W / 2, 292, 20, '#2a5d86');
@@ -503,7 +524,7 @@ function draw() {
     if (x < -60) continue;
     const dy = bob(k, t);
     drawTurtle(x, k > 0 ? noteAt(k - 1).d : '', k < st.target, dy);
-    if (!fallen && k === st.target) { cx.save(); cx.translate(0, dy); drawCue(x, k, t); cx.restore(); }
+    if (!fallen && st.state !== 'clear' && k === st.target) { cx.save(); cx.translate(0, dy); drawCue(x, k, t); cx.restore(); }
   }
 
   // ウサギ（3番の「グーグー」の所では眠そう）
@@ -534,12 +555,12 @@ function draw() {
     if (n >= 1 && n <= 3) text(String(n), W / 2, 200, 90, '#fff', '#2a5d86');
   }
 
-  if (st.state !== 'over') {
+  if (st.state !== 'over' && !(st.state === 'clear' && t - st.clearAt > 1500)) {   // クリア画面が出たらプレイ中の表示は消す
     drawLyric();
     text(String(st.score), W / 2, 50, 54, '#fff', '#2a5d86');
     text(`BEST ${st.best}`, W - 70, 30, 18, '#fff', '#2a5d86');
     const vn = verseOfTarget(st.target);
-    text(`${D().name} ${(vn % NV) + 1}番 ♩=${bpmOf(vn)}`, 110, 30, 18, '#fff', '#2a5d86');
+    text(`${D().name} ${(vn % NV) + 1}番 ♩=${bpmOf(vn)}`, 135, 30, 18, '#fff', '#2a5d86');
     if (st.combo >= TUNE.harmonyAt && !fallen) text('🐢 カメもハモり中♪', 100, 62, 16, '#9fe870', '#1d3b52');
   }
 
@@ -563,6 +584,7 @@ function draw() {
     cx.globalAlpha = 1;
   }
 
+  if (st.state === 'clear') drawClear(t);
   if (st.state === 'over') {
     cx.fillStyle = 'rgba(0,0,0,.45)'; cx.fillRect(0, 0, W, H);
     text(`ドボン…（${D().name}）`, W / 2, 80, 34, '#fff');
@@ -584,6 +606,29 @@ function draw() {
   }
 }
 
+function drawClear(t) {
+  const a = clamp01((t - st.clearAt - 1500) / 400);
+  if (a <= 0) return;
+  cx.globalAlpha = a;
+  cx.fillStyle = 'rgba(0,0,0,.5)'; cx.fillRect(0, 0, W, H);
+  const s = 1 + Math.sin(t / 150) * 0.04;
+  cx.save(); cx.translate(W / 2, 62); cx.scale(s, s);
+  text(`🎉 ${D().name} クリア！`, 0, 0, 44, '#ffd23f', '#7a4b00'); cx.restore();
+  text(String(st.score), W / 2, 145, 80, '#fff', '#2a5d86');
+  text('匹 ぜんぶ渡って、4番まで歌い切った！', W / 2, 200, 22, '#fff');
+  text(st.newRecord ? 'NEW RECORD!' : `自己ベスト ${st.best}`, W / 2, 240, st.newRecord ? 30 : 22, st.newRecord ? '#ffd23f' : '#fff', st.newRecord ? '#7a4b00' : null);
+  text(`PERFECT ${st.perfects}回 ／ 最大連続 ${st.maxCombo}`, W / 2, 278, 18, '#ddd');
+  if (st.extraNew) {
+    const g = 0.7 + 0.3 * Math.sin(t / 200);
+    cx.globalAlpha = a * g;
+    text('✨ エクストラモードが解放された！ ✨', W / 2, 330, 26, '#e9c6ff', '#4a1a6b');
+    cx.globalAlpha = a;
+    text('カメがぷかぷか揺れる、ハードのその先…', W / 2, 362, 16, '#fff');
+  }
+  if (t - st.clearAt > 2000) text('タップでタイトルへ', W / 2, 410, 24, '#fff', '#2a5d86');
+  cx.globalAlpha = 1;
+}
+
 function loop() { update(); draw(); requestAnimationFrame(loop); }
 
 // ===== 入力（指が触れた瞬間・キーが押された瞬間で受け取る。スマホは画面のどこを触ってもOK） =====
@@ -594,14 +639,17 @@ document.addEventListener('pointerdown', e => {
 });
 addEventListener('keydown', e => {
   if (e.repeat) return;
-  // タイトルでは ←→ か 1・2・3 で難易度をえらぶ
+  // タイトルでは ←→ か 1〜4 で難易度をえらぶ（エクストラは解放後だけ）
   if (st.state === 'title') {
-    const i = DIFFS.indexOf(diff);
+    const i = DIFFS.indexOf(diff), max = extraOpen() ? 3 : 2;
     if (e.key === 'ArrowLeft') { setDiff(DIFFS[Math.max(0, i - 1)]); st.best = loadBest(); return; }
-    if (e.key === 'ArrowRight') { setDiff(DIFFS[Math.min(2, i + 1)]); st.best = loadBest(); return; }
-    if (['1', '2', '3'].includes(e.key)) { setDiff(DIFFS[+e.key - 1]); press(); return; }
+    if (e.key === 'ArrowRight') { setDiff(DIFFS[Math.min(max, i + 1)]); st.best = loadBest(); return; }
+    if (['1', '2', '3', '4'].includes(e.key)) {
+      if (+e.key - 1 > max) return;
+      setDiff(DIFFS[+e.key - 1]); press(); return;
+    }
   }
-  if (st.state === 'over' && (e.key === 'Escape' || e.key === 'Backspace')) { reset(true); return; }
+  if ((st.state === 'over' || st.state === 'clear') && (e.key === 'Escape' || e.key === 'Backspace')) { reset(true); return; }
   if ([' ', 'Enter', 'ArrowUp', 'z', 'Z'].includes(e.key)) { e.preventDefault(); press(); }
 });
 document.addEventListener('dblclick', e => e.preventDefault());
