@@ -15,7 +15,7 @@
 <body>
 <canvas id="cv"></canvas>
 <script>
-const VERSION = '11/08-c';   // 直したら上げる（スマホは10分キャッシュがあるので版番号で確かめる）
+const VERSION = '11/08-d';   // 直したら上げる（スマホは10分キャッシュがあるので版番号で確かめる）
 
 // ===== 調整用の数字（試作なのでここだけ触れば手触りが変わる） =====
 const TUNE = {
@@ -31,7 +31,7 @@ const TUNE = {
   diff: {
     easy:   { name: 'イージー', bpm: [104, 108, 112, 116], merge: true },
     normal: { name: 'ノーマル', bpm: [104, 116, 128, 140], merge: false },
-    hard:   { name: 'ハード',   bpm: [104, 120, 136, 152], merge: false },
+    hard:   { name: 'ハード',   bpm: [104, 120, 136, 152], merge: false, bob: 10 },   // bob＝カメが上下にぷかぷか揺れる幅（px）
   },
   harmonyAt: 10,        // PERFECTがこの回数続くと、カメ（ずんだもん）がハモる
   click: true,          // 拍ごとのカチッ（テンポの目安）
@@ -300,11 +300,19 @@ function rabbitWorld() {
   const { k, p } = seg(now());
   return k === 0 ? 0 : lerp(st.X[k - 1], st.X[k], p);
 }
+// ハードのカメのぷかぷか（カメごとに揺れの速さとずれがちがう）。押すタイミングは曲どおりで変わらない
+function bob(k, t) {
+  const a = D().bob;
+  if (!a || st.state === 'title') return 0;
+  const per = 1100 + (k * 397) % 800;
+  return a * Math.sin(t / per * Math.PI * 2 + k * 1.7);
+}
 function rabbitY() {
-  const { k, p } = seg(now());
-  if (k === 0) return SHELL_TOP;
+  const t = now(), { k, p } = seg(t);
+  if (k === 0) return SHELL_TOP + bob(0, t);
   const h = Math.min(150, 20 + (st.X[k] - st.X[k - 1]) * 0.35);   // 近いカメへは低く、遠いカメへは高く
-  return SHELL_TOP - h * 4 * p * (1 - p);
+  // 乗っているカメから次のカメへ（どちらも揺れているので、その高さをつなぐ）
+  return lerp(SHELL_TOP + bob(k - 1, t), SHELL_TOP + bob(k, t), p) - h * 4 * p * (1 - p);
 }
 
 // ===== 景色（1番＝昼／2番＝夕方／3番＝夜／4番＝朝焼け）。番が変わると少しずつ移り変わる =====
@@ -363,7 +371,15 @@ function drawBg(t, cam) {
   }
 }
 
-function drawTurtle(x, label, done) {
+function drawTurtle(x, label, done, dy = 0) {
+  if (dy) {
+    // 浮き上がったときは水面までおなかを見せる・水面に小さな波紋
+    if (dy < 0) { cx.fillStyle = '#2d6b2a'; cx.fillRect(x - 24, WATER_Y - 2 + dy, 48, -dy + 2); }
+    cx.fillStyle = 'rgba(255,255,255,.55)';
+    cx.beginPath(); cx.ellipse(x, WATER_Y + 2, 32, 3, 0, 0, Math.PI * 2); cx.fill();
+    cx.save(); cx.translate(0, dy); drawTurtle(x, label, done); cx.restore();
+    return;
+  }
   cx.fillStyle = '#7cc46a';
   cx.beginPath(); cx.ellipse(x + 30, WATER_Y - 3, 8, 6, 0, 0, Math.PI * 2); cx.fill(); // 頭
   cx.fillStyle = '#3f8f3a';
@@ -485,8 +501,9 @@ function draw() {
     const x = st.X[k] - cam;
     if (x > W + 60) break;
     if (x < -60) continue;
-    drawTurtle(x, k > 0 ? noteAt(k - 1).d : '', k < st.target);
-    if (!fallen && k === st.target) drawCue(x, k, t);
+    const dy = bob(k, t);
+    drawTurtle(x, k > 0 ? noteAt(k - 1).d : '', k < st.target, dy);
+    if (!fallen && k === st.target) { cx.save(); cx.translate(0, dy); drawCue(x, k, t); cx.restore(); }
   }
 
   // ウサギ（3番の「グーグー」の所では眠そう）
