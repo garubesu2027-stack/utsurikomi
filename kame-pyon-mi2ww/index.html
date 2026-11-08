@@ -15,7 +15,7 @@
 <body>
 <canvas id="cv"></canvas>
 <script>
-const VERSION = '11/08-e';   // 直したら上げる（スマホは10分キャッシュがあるので版番号で確かめる）
+const VERSION = '11/08-g';   // 直したら上げる（スマホは10分キャッシュがあるので版番号で確かめる）
 
 // ===== 調整用の数字（試作なのでここだけ触れば手触りが変わる） =====
 const TUNE = {
@@ -33,7 +33,7 @@ const TUNE = {
     easy:   { name: 'イージー', bpm: [104, 108, 112, 116], merge: true },
     normal: { name: 'ノーマル', bpm: [104, 116, 128, 140] },
     hard:   { name: 'ハード',   bpm: [116, 128, 140, 152], perfect: [45, 30], early: [100, 60], late: [120, 75] },   // 判定は10/29の元の厳しさ
-    extra:  { name: 'エクストラ', bpm: [116, 128, 140, 152], perfect: [45, 30], early: [100, 60], late: [120, 75], bob: 10 },   // ハード＋ぷかぷか。ハードをクリアすると出る
+    extra:  { name: 'エクストラ', bpm: [116, 128, 140, 152], perfect: [45, 30], early: [100, 60], late: [120, 75], bob: 10, jama: true },   // ハード＋ぷかぷか＋邪魔（カモメ・霧・魚）。ハードをクリアすると出る
   },
   harmonyAt: 10,        // PERFECTがこの回数続くと、カメ（ずんだもん）がハモる
   click: true,          // 拍ごとのカチッ（テンポの目安）
@@ -137,6 +137,17 @@ function click(t, strong) {
   o.type = 'square'; o.frequency.value = strong ? 1500 : 1000;
   g.gain.setValueAtTime(strong ? 0.14 : 0.09, at); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.03);
   o.connect(g); g.connect(ac.destination); o.start(at); o.stop(at + 0.04);
+}
+// カモメの「カァ」（小さめ。耳もちょっと惑わす）
+function gullSound() {
+  if (!ac) return;
+  const t = ac.currentTime;
+  for (const d of [0, 0.16]) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(1300, t + d); o.frequency.exponentialRampToValueAtTime(700, t + d + 0.13);
+    g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.05, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.14);
+    o.connect(g); g.connect(ac.destination); o.start(t + d); o.stop(t + d + 0.15);
+  }
 }
 function failSound() {
   if (!ac) return;
@@ -252,7 +263,7 @@ function press(p) {
     if (st.combo >= TUNE.harmonyAt) play('z', n.sub.z, at2, 0.75);
   }
   popup(perfect ? (st.combo >= 3 ? `PERFECT ×${st.combo}` : 'PERFECT') : 'GOOD',
-        perfect ? '#ffd23f' : '#9fe870', d);
+        perfect ? '#ffd23f' : '#9fe870', perfect ? null : d);   // PERFECTのときはズレ（ms）を出さない
   // 番の最後まで歌えた
   if (n.last) {
     const vn = verseNo(k - 1);
@@ -285,6 +296,7 @@ function update() {
       st.clickPos += 4;
     }
   }
+  if (st.state === 'play' && D().jama) spawnJama(t);
   if (st.state === 'play') {
     extendChart(st.target);
     if (t > st.L[st.target] + win('late', st.target)) fail('遅すぎ！', null);
@@ -293,6 +305,78 @@ function update() {
     st.state = 'over'; st.overAt = t;
     if (st.score > st.best) { st.best = st.score; st.newRecord = true; saveBest(st.score); }
   }
+}
+
+// ===== エクストラの邪魔（カモメ・魚）。番が進むほど出る間隔が短くなる =====
+function spawnJama(t) {
+  const vn = Math.min(3, verseOfTarget(st.target));
+  st.gulls = st.gulls || []; st.fishes = st.fishes || [];
+  if (!st.nextGull) st.nextGull = t + 2500;
+  if (!st.nextFish) st.nextFish = t + 4000;
+  if (t >= st.nextGull) {
+    const dir = Math.random() < 0.6 ? -1 : 1;           // たいていは右から左へ
+    const near = Math.random() < 0.4;                   // 手前を大きく飛ぶカモメ（ウサギや輪っかの前を通る）
+    st.gulls.push({ born: t, dir, near, y: near ? 210 + Math.random() * 90 : 90 + Math.random() * 120,
+                    v: (near ? 0.42 : 0.25) * (0.8 + Math.random() * 0.4), ph: Math.random() * 6 });
+    if (near) gullSound();
+    st.nextGull = t + (3600 - vn * 700) * (0.6 + Math.random() * 0.8);
+  }
+  if (t >= st.nextFish) {
+    // カメとカメの間あたり（画面の右半分）からピョン
+    st.fishes.push({ born: t, wx: rabbitWorld() + 120 + Math.random() * 380, h: 60 + Math.random() * 50, dir: Math.random() < 0.5 ? -1 : 1 });
+    st.nextFish = t + (4200 - vn * 800) * (0.6 + Math.random() * 0.8);
+  }
+  st.gulls = st.gulls.filter(g => t - g.born < 6000);
+  st.fishes = st.fishes.filter(f => t - f.born < 1200);
+}
+function drawGull(x, y, s, flap) {
+  cx.save(); cx.translate(x, y); cx.scale(s, s);
+  const w = Math.sin(flap) * 9;
+  cx.strokeStyle = '#555'; cx.lineWidth = 3.5; cx.lineCap = 'round'; cx.lineJoin = 'round';
+  cx.fillStyle = '#fff';
+  cx.beginPath(); cx.ellipse(0, 0, 13, 6, 0, 0, Math.PI * 2); cx.fill();                 // 体
+  cx.beginPath(); cx.moveTo(-26, -4 - w); cx.quadraticCurveTo(-12, -14 - w, 0, -2);   // 翼
+  cx.quadraticCurveTo(12, -14 - w, 26, -4 - w); cx.stroke();
+  cx.fillStyle = '#f5a623'; cx.beginPath(); cx.moveTo(-13, 0); cx.lineTo(-20, 2); cx.lineTo(-13, 3); cx.fill(); // くちばし
+  cx.restore();
+}
+function drawGulls(t) {
+  for (const g of st.gulls || []) {
+    const age = t - g.born, s = g.near ? 1.6 : 0.9;
+    const x = g.dir < 0 ? W + 60 - age * g.v : -60 + age * g.v;
+    const y = g.y + Math.sin(age / 300 + g.ph) * 8;
+    cx.save(); if (g.dir > 0) { cx.translate(x * 2, 0); cx.scale(-1, 1); }   // 右向きは左右反転
+    drawGull(x, y, s, age / 90 + g.ph); cx.restore();
+  }
+}
+function drawFishes(t, cam) {
+  for (const f of st.fishes || []) {
+    const p = (t - f.born) / 1000; if (p > 1) continue;
+    const x = f.wx - cam + f.dir * p * 70, y = WATER_Y - f.h * 4 * p * (1 - p);
+    if (p < 1) {
+      cx.save(); cx.translate(x, y); cx.rotate(f.dir * (p - 0.5) * 2.2); if (f.dir < 0) cx.scale(-1, 1);
+      // カメと見まちがえそうな緑っぽい魚
+      cx.fillStyle = '#4c9a48'; cx.beginPath(); cx.ellipse(0, 0, 20, 10, 0, 0, Math.PI * 2); cx.fill();
+      cx.beginPath(); cx.moveTo(-17, 0); cx.lineTo(-30, -9); cx.lineTo(-30, 9); cx.closePath(); cx.fill();
+      cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(11, -3, 3, 0, Math.PI * 2); cx.fill();
+      cx.fillStyle = '#111'; cx.beginPath(); cx.arc(12, -3, 1.5, 0, Math.PI * 2); cx.fill();
+      cx.restore();
+    }
+    // 跳ねた所と落ちた所に波紋
+    for (const [q, xx] of [[p, f.wx - cam], [p - 0.85, f.wx - cam + f.dir * 70]]) {
+      if (q < 0 || q > 0.25) continue;
+      cx.strokeStyle = `rgba(255,255,255,${1 - q * 4})`; cx.lineWidth = 2;
+      cx.beginPath(); cx.ellipse(xx, WATER_Y + 3, 10 + q * 120, 3 + q * 12, 0, 0, Math.PI * 2); cx.stroke();
+    }
+  }
+}
+// 霧：画面の右から白くなって先のカメが見えない。番が進むほど手前まで来る（ウサギの周りは見える）
+function drawFog(t) {
+  const vn = Math.min(3, verseOfTarget(st.target));
+  const x0 = 560 - vn * 40 + Math.sin(t / 1300) * 25;
+  const g = cx.createLinearGradient(x0, 0, x0 + 170, 0);
+  g.addColorStop(0, 'rgba(235,240,245,0)'); g.addColorStop(1, 'rgba(235,240,245,0.93)');
+  cx.fillStyle = g; cx.fillRect(x0, 0, W - x0, H);
 }
 
 // ===== 位置の計算 =====
@@ -526,6 +610,7 @@ function draw() {
     drawTurtle(x, k > 0 ? noteAt(k - 1).d : '', k < st.target, dy);
     if (!fallen && st.state !== 'clear' && k === st.target) { cx.save(); cx.translate(0, dy); drawCue(x, k, t); cx.restore(); }
   }
+  if (D().jama) { drawFishes(t, cam); drawFog(t); }
 
   // ウサギ（3番の「グーグー」の所では眠そう）
   const cur = noteAt(Math.max(0, st.target - 2));
@@ -548,6 +633,8 @@ function draw() {
     drawRabbit(RABBIT_X, y, { air: k > 0 && !land, p, squash: land, sleepy });
     if (sleepy) text('Zzz', RABBIT_X + 34, y - 62 - 4 * Math.sin(t / 200), 18, '#fff', '#2a5d86');
   }
+
+  if (D().jama) drawGulls(t);   // カモメはウサギより手前を飛ぶ
 
   // カウント（3・2・1）
   if (st.state === 'count') {
