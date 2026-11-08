@@ -15,7 +15,7 @@
 <body>
 <canvas id="cv"></canvas>
 <script>
-const VERSION = '11/08-h';   // 直したら上げる（スマホは10分キャッシュがあるので版番号で確かめる）
+const VERSION = '11/08-i';   // 直したら上げる（スマホは10分キャッシュがあるので版番号で確かめる）
 
 // ===== 調整用の数字（試作なのでここだけ触れば手触りが変わる） =====
 const TUNE = {
@@ -31,9 +31,9 @@ const TUNE = {
   //   bob ＝ カメが上下にぷかぷか揺れる幅（px）。見た目だけで、押すタイミングは曲どおり
   diff: {
     easy:   { name: 'イージー', bpm: [104, 108, 112, 116], merge: true },
-    normal: { name: 'ノーマル', bpm: [104, 116, 128, 140] },
-    hard:   { name: 'ハード',   bpm: [104, 120, 136, 152], perfect: [45, 30], early: [100, 60], late: [120, 75] },   // 判定は10/29の元の厳しさ
-    extra:  { name: 'エクストラ', bpm: [104, 120, 136, 152], perfect: [45, 30], early: [100, 60], late: [120, 75], bob: 10, jama: true },   // ハード＋ぷかぷか＋邪魔（カモメ・霧・魚）。ハードをクリアすると出る
+    normal: { name: 'ノーマル', bpm: [104, 112, 124, 136] },   // 11/08 ハードより少しゆっくり上がる
+    hard:   { name: 'ハード',   bpm: [104, 116, 128, 140], perfect: [45, 30], early: [100, 60], late: [120, 75] },   // 速さも判定も10/29の元の版と同じ
+    extra:  { name: 'エクストラ', bpm: [104, 116, 128, 140], perfect: [45, 30], early: [100, 60], late: [120, 75], bob: 10, jama: true },   // ハード＋ぷかぷか＋邪魔（カモメ・霧・魚）。ハードをクリアすると出る
   },
   harmonyAt: 10,        // PERFECTがこの回数続くと、カメ（ずんだもん）がハモる
   click: true,          // 拍ごとのカチッ（テンポの目安）
@@ -631,7 +631,7 @@ function draw() {
     const land = k > 0 && (t - st.L[k - 1]) < 70;   // 着地した直後（C のときだけむにっとつぶれる）
     const y = rabbitY();
     drawRabbit(RABBIT_X, y, { air: k > 0 && !land, p, squash: land, sleepy });
-    if (sleepy) text('Zzz', RABBIT_X + 34, y - 62 - 4 * Math.sin(t / 200), 18, '#fff', '#2a5d86');
+    if (sleepy && D().jama) text('Zzz', RABBIT_X + 34, y - 62 - 4 * Math.sin(t / 200), 18, '#fff', '#2a5d86');
   }
 
   if (D().jama) drawGulls(t);   // カモメはウサギより手前を飛ぶ
