@@ -18,7 +18,7 @@
 <body>
 <canvas id="cv"></canvas>
 <script>
-const VERSION = '11/09-b';   // 直したら上げる（スマホは10分キャッシュがあるので版番号で確かめる）
+const VERSION = '11/09-d';   // 直したら上げる（スマホは10分キャッシュがあるので版番号で確かめる）
 
 // ===== 調整用の数字（試作なのでここだけ触れば手触りが変わる） =====
 const TUNE = {
@@ -36,7 +36,7 @@ const TUNE = {
     easy:   { name: 'イージー', bpm: [104, 108, 112, 116], merge: true },
     normal: { name: 'ノーマル', bpm: [104, 112, 124, 136] },   // 11/08 ハードより少しゆっくり上がる
     hard:   { name: 'ハード',   bpm: [104, 116, 128, 140], perfect: [45, 30], early: [100, 60], late: [120, 75] },   // 速さも判定も10/29の元の版と同じ
-    extra:  { name: 'エクストラ', bpm: [104, 116, 128, 140], perfect: [45, 30], early: [100, 60], late: [120, 75], bob: 10, jama: true },   // ハード＋ぷかぷか＋邪魔（カモメ・霧・魚）。ハードをクリアすると出る
+    extra:  { name: 'エクストラ', bpm: [104, 116, 128, 140], perfect: [45, 30], early: [100, 60], late: [120, 75], bob: 10, jama: true, endless: true },   // ハード＋ぷかぷか＋邪魔（カモメ・霧・魚）。ハードをクリアすると出る
   },
   harmonyAt: 10,        // PERFECTがこの回数続くと、カメ（ずんだもん）がハモる
   click: true,          // 拍ごとのカチッ（テンポの目安）
@@ -221,10 +221,10 @@ function reset(toTitle) {
 
 function popup(text, color, ms) { st.popup = { text, color, ms, at: now() }; }
 
-// タイトルの難易度ボタン（x中心, 幅, 高さ, y中心）と、ゲームオーバー画面の「難易度をえらぶ」
+// タイトルの難易度ボタン（x中心, 幅, 高さ, y中心）と、ゲームオーバー画面の「タイトルに戻る」
 const BTN_Y = 215, BTN_W = 165, BTN_H = 58;
 function btnX(i) { return W / 2 + (i - 1.5) * 185; }
-const BACK = { x: 110, y: 425, w: 190, h: 40 };
+const BACK = { x: 135, y: 418, w: 240, h: 52 };
 function hit(p, x, y, w, h) { return p && Math.abs(p.x - x) <= w / 2 && Math.abs(p.y - y) <= h / 2; }
 
 function press(p) {
@@ -276,8 +276,13 @@ function press(p) {
   // 番の最後まで歌えた
   if (n.last) {
     const vn = verseNo(k - 1);
-    st.banner = { text: vn === NV - 1 ? '4番まで歌い切った！🎉' : `${vn + 1}番クリア！`, at: t };
-    if (vn === NV - 1) clearGame(t, k);
+    const lastV = vn % NV === NV - 1;
+    if (D().endless) {   // エクストラは終わらない。4番のあとは1番に戻り、1周ごとに霧が寄ってくる
+      st.banner = { text: lastV ? `${Math.floor(vn / NV) + 1}周クリア！霧が濃くなる…🌫️` : `${(vn % NV) + 1}番クリア！`, at: t };
+    } else {
+      st.banner = { text: lastV ? '4番まで歌い切った！🎉' : `${vn + 1}番クリア！`, at: t };
+      if (lastV) clearGame(t, k);
+    }
   }
 }
 
@@ -381,8 +386,9 @@ function drawFishes(t, cam) {
 }
 // 霧：画面の右から白くなって先のカメが見えない。番が進むほど手前まで来る（ウサギの周りは見える）
 function drawFog(t) {
-  const vn = Math.min(3, verseOfTarget(st.target));
-  const x0 = 560 - vn * 40 + Math.sin(t / 1300) * 25;
+  // 1周目は番ごとに40pxずつ、2周目からは1周ごとにさらに40px寄る（320で止める＝着地前には次のカメが見える）
+  const vn = verseOfTarget(st.target), lap = Math.floor(vn / NV);
+  const x0 = Math.max(320, 560 - Math.min(vn, NV - 1) * 40 - lap * 40) + Math.sin(t / 1300) * 25;
   const g = cx.createLinearGradient(x0, 0, x0 + 170, 0);
   g.addColorStop(0, 'rgba(235,240,245,0)'); g.addColorStop(1, 'rgba(235,240,245,0.93)');
   cx.fillStyle = g; cx.fillRect(x0, 0, W - x0, H);
@@ -660,7 +666,7 @@ function draw() {
     text(String(st.score), W / 2, 50, 54, '#fff', '#2a5d86');
     text(`BEST ${st.best}`, W - 70, 30, 18, '#fff', '#2a5d86');
     const vn = verseOfTarget(st.target);
-    text(`${D().name} ${(vn % NV) + 1}番 ♩=${bpmOf(vn)}`, 135, 30, 18, '#fff', '#2a5d86');
+    text(`${D().name} ${D().endless && vn >= NV ? `${Math.floor(vn / NV) + 1}周目 ` : ''}${(vn % NV) + 1}番 ♩=${bpmOf(vn)}`, 135, 30, 18, '#fff', '#2a5d86');
     if (st.combo >= TUNE.harmonyAt && !fallen) text(cur.w === 'k' ? '🐰 ウサギもハモり中♪' : '🐢 カメもハモり中♪', 100, 62, 16, cur.w === 'k' ? '#ffc0d9' : '#9fe870', '#1d3b52');
   }
 
@@ -690,7 +696,7 @@ function draw() {
     text(`ドボン…（${D().name}）`, W / 2, 80, 34, '#fff');
     text(String(st.score), W / 2, 160, 96, '#fff', '#2a5d86');
     const reached = st.score === 0 ? 0 : verseNo(st.score - 1);
-    text(`匹わたった（${(reached % NV) + 1}番の途中まで）`, W / 2, 225, 22, '#fff');
+    text(`匹わたった（${reached >= NV ? `${Math.floor(reached / NV) + 1}周目・` : ''}${(reached % NV) + 1}番の途中まで）`, W / 2, 225, 22, '#fff');
     if (st.newRecord) {
       const s = 1 + Math.sin(t / 120) * 0.05;
       cx.save(); cx.translate(W / 2, 278); cx.scale(s, s);
@@ -701,7 +707,9 @@ function draw() {
     text(`PERFECT ${st.perfects}回 ／ 最大連続 ${st.maxCombo}`, W / 2, 325, 18, '#ddd');
     if (t - st.overAt > 450) {
       text('タップでもう1回', W / 2, 390, 26, '#fff', '#2a5d86');
-      text('← 難易度をえらぶ', BACK.x, BACK.y, 18, '#fff', '#2a5d86');
+      cx.beginPath(); cx.roundRect(BACK.x - BACK.w / 2, BACK.y - BACK.h / 2, BACK.w, BACK.h, 14);
+      cx.fillStyle = 'rgba(42,93,134,.85)'; cx.fill(); cx.lineWidth = 3; cx.strokeStyle = '#fff'; cx.stroke();
+      text('← タイトルに戻る', BACK.x, BACK.y, 26, '#fff');
     }
   }
 }
@@ -723,9 +731,14 @@ function drawClear(t) {
     cx.globalAlpha = a * g;
     text('✨ エクストラモードが解放された！ ✨', W / 2, 330, 26, '#e9c6ff', '#4a1a6b');
     cx.globalAlpha = a;
-    text('カメがぷかぷか揺れる、ハードのその先…', W / 2, 362, 16, '#fff');
+    text('カメがぷかぷか揺れる、ハードのその先…', W / 2, 358, 16, '#fff');
   }
-  if (t - st.clearAt > 2000) text('タップでタイトルへ', W / 2, 410, 24, '#fff', '#2a5d86');
+  // ハードをクリアした人にだけ、空きマス7回タップの裏技を教える（友だちに教えてもらう用）
+  if (diff === 'hard') {
+    text('🤫 ナイショの裏技：タイトルの空きマスを7回タップでも、エクストラが遊べるよ',
+      W / 2, st.extraNew ? 384 : 340, 15, '#ffe08a', '#4a1a6b');
+  }
+  if (t - st.clearAt > 2000) text('タップでタイトルへ', W / 2, 420, 24, '#fff', '#2a5d86');
   cx.globalAlpha = 1;
 }
 
