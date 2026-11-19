@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="robots" content="noindex">
-<title>カメぴょん！（試作）</title>
+<title>カメぴょん！</title>
 <meta name="apple-mobile-web-app-title" content="カメぴょん">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icon-512.png">
@@ -18,7 +18,7 @@
 <body>
 <canvas id="cv"></canvas>
 <script>
-const VERSION = '11/09-d';   // 直したら上げる（スマホは10分キャッシュがあるので版番号で確かめる）
+const VERSION = '11/19-a';   // 直したら上げる（スマホは10分キャッシュがあるので版番号で確かめる）
 
 // ===== 調整用の数字（試作なのでここだけ触れば手触りが変わる） =====
 const TUNE = {
@@ -587,7 +587,6 @@ function draw() {
     for (let i = 0; i < 4; i++) drawTurtle(RABBIT_X + i * 4 * TUNE.px16, '', false);
     drawRabbit(RABBIT_X, SHELL_TOP, {});
     text('カメぴょん！', W / 2, 100, 64, '#fff', '#2a5d86');
-    text('（試作版）', W / 2, 150, 22, '#2a5d86');
     const colors = { easy: '#5cb85c', normal: '#3a86c8', hard: '#d9534f', extra: '#8e44ad' };
     DIFFS.forEach((d, i) => {
       const x = btnX(i), sel = d === diff, locked = !canPick(d);
